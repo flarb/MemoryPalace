@@ -11,12 +11,50 @@
 
 ## UI & modes
 
-- **Start modal** (house pattern): floating SpectaclesUIKit panel on launch with three buttons — **Capture · Explore · Train** — plus a first-run hint showing a hand icon ("glance at your hand to capture"), per Snap's hand-menu guideline that users won't find hand UI without a hint.
+- **Start modal** (house pattern): follow-panel (UIKit Frame, head-follow + tilt mode) with four buttons — **Create · Edit · Explore · Train** — plus a first-run hint, per Snap's hand-menu guideline that users won't find hand UI without a hint. Create starts a blank palace session; Edit opens the saved-palace picker; Explore/Train run on the active palace.
 - **The Sigil — back-of-hand summon.** Snap OS reserves only its small persistent system button on the hand; the rest of the hand is explicitly ours ("Space on the Hand" guideline). Our affordance: glance at the **back of your non-dominant hand** → an **ethereal particle swirl** blooms above the knuckles (VFX Graph, attached via SIK `ObjectTracking3D` hand keypoints) with a floating **"New Memory"** label. Tap/pinch it with the dominant hand → capture wizard starts. Non-dominant placement follows the official guideline (dominant hand stays free for targeting); back-of-hand keeps clear of the system button's spot; SIK's hand occluder lets particles wrap behind fingers for free ethereality.
-- **Sigil availability:** always-on in Capture and Explore (capture-anywhere is the app's point); suppressed during Train quizzes to prevent accidental captures.
+- **Sigil availability:** the sigil is the **session controller** — it exists only inside Create/Edit sessions (see Palaces & sessions). Explore and Train stay hands-clean; the modal handles all mode switching.
 - **Aura sound:** the sigil emits a quiet looping new-age ambient pad — positional, anchored to the hand — with an intensity ramp on hover and a chime on select. One "arcana" audio/VFX family reused everywhere: sigil swirl → gem forging shimmer → hatch burst share one particle system restyled, which keeps the aesthetic coherent *and* the particle budget Specs-friendly.
 - All capture steps happen **diegetically at the location** — no modal walls once the wizard starts.
 - **Branding (locked):** the **Keystone** mark — faceted gem inside a palace arch with orbit ring, "MEMORY PALACE / AR" wordmark. Assets in `Branding/` (`logo-memorypalace-card.svg` for README/video title card, `logo-memorypalace-transparent.svg` for the start modal). Brand palette: deep indigo `#170d31`, violet `#7c6cf0`, teal `#4dd6c1`, lavender text `#ede9ff`. **The in-lens gem uses the logo's violet→teal gradient material** — one material story from logo to hand sigil to placed gems. Pipeline: `ConvertSvgToTexture` for the modal texture (if `<text>` doesn't survive conversion, rasterize the lockup and import as PNG); `GenerateLensIcon` in matching style for the lens icon. **The Keystone lockup is the visual north star for the entire app — imagery and typography. Full doctrine: [Branding/STYLE.md](Branding/STYLE.md)** (palette tokens, type scale + AR legibility rules, shape language, materials, motion). All UI work — mine or subagents' — follows STYLE.md.
+
+## Palaces & sessions
+
+A **palace** is a named save: an ordered set of memory anchors captured in one
+physical place ("Office", "Living room"). Multiple palaces per user; simple
+list, most-recent first.
+
+- **Create** → new blank palace (auto-named "Palace N", renameable later) →
+  enters an **editing session**.
+- **Edit** → saved-palace picker on the modal → loads that palace's anchors →
+  same editing session.
+- **Explore / Train** → run on the *active* palace (last created/loaded).
+
+**The editing session** (the core loop the user asked for):
+1. Modal hides. The **sigil cluster** appears — on-device: back of the left
+   hand; editor: parked lower-left in view. Two affordances:
+   - **Swirl** (tap) → capture wizard → new gem placed.
+   - **Done chip** (✓, small orb below the swirl) → **saves the palace** and
+     returns to the main menu.
+2. Walk anywhere; capture repeatedly. Placed gems are selectable during the
+   session: select → memory card blooms with the transcript + **Delete**.
+3. Done → save → modal. Nothing is lost on accidental exits: the session
+   auto-saves after every capture/delete too.
+
+**Location linking (v1 honesty):** palaces are named by the user, not
+auto-detected. On device, Spatial Anchors only restore where they were mapped —
+loading "Office" in your kitchen yields unanchored gems (known behavior, shown
+as a soft warning). Auto-suggesting the palace whose anchors localize in the
+current space is the correct future feature (post-hackathon; requires probing
+anchor sets against the live map).
+
+**Testing the hand interface in editor:** hand-joint tracking never fires in
+the Lens Studio preview (`HandInputData.isTracked` stays false — confirmed
+against docs), so: (1) the parked sigil cluster is fully mouse-drivable — SIK's
+mouse interactor treats click as pinch on any Interactable; (2) automated
+verification drives real SIK pinch/poke events against the sigil via the
+synthetic puppet hand (PreviewInteractTool); (3) the on-hand placement/feel is
+device-only — Saturday's on-device pass.
 
 ## Capture flow (the wizard)
 
@@ -94,6 +132,11 @@ When the user conjures, a single LLM call (Remote Service Gateway → Gemini/Ope
 ## Data model
 
 ```
+Palace {
+  id, name, createdAt, updatedAt
+  memories: MemoryAnchor[]
+}
+
 MemoryAnchor {
   id, createdAt
   anchorId                 // Spatial Anchors API handle
@@ -162,7 +205,7 @@ MemoryAnchor {
 | Day | Milestone |
 |---|---|
 | Tue | Scene bootstrap (camera, SIK, UIKit); git init + first commit; start modal + palm button; wizard v0: frame-draw → ASR card → gem drop (free-float). |
-| Wed | Surface-pin step; snapshot capture wired into gem inclusion; anchor + metadata persistence; Explore select → memory card + audio. |
+| Wed | **Palace sessions + persistence:** session state machine (Create/Edit → sigil-controlled editing → Done saves → modal); sigil cluster v1 (swirl + Done chip, editor park restored); gem select → memory card + Delete; palace save/load (persistentStorage metadata + Spatial Anchors); modal Create/Edit + picker. Snapshot capture if time allows. *(Surface-pin shipped Tue night.)* |
 | Thu | Journeys + recall quiz + mastery ladder. RSG wiring + imagery router (LLM JSON). **Core feature freeze.** |
 | Fri | Snap3D async hatch + anim/VFX recipes; Bitmoji route + bundled clips. |
 | Sat | Spatial-audio whisper, blurred hint, SFX/particles, lens icon; on-device passes; decay shader if cheap. |
