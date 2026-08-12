@@ -32,3 +32,5 @@ PluginsUserPreferences/
 .codex/config.toml
 .claude/settings.local.json
 # END Lens Studio managed Agents-Docs block
+
+ls-extensions/
