@@ -215,6 +215,60 @@ kite-cut faceted gem, brand-gradient vertex colors, verified in preview.
 `onInitialized` (ReplayEvent, duplicates ignored); `uiHud` @input wired by
 SceneObject ref read back null → re-wired to the ScriptComponent UUID.
 
+---
+
+# Design phase (Tue Aug 11, before any build)
+
+## Ideation
+**Prompt:** "I'm competing in this hackathon: https://lenslist.co/clad-summer-hackathon
+Give me some ideas for the week 1 theme 'organize'"
+→ Fetched the brief (themes, 50/25/25 judging, submission format), generated an
+idea slate; **AR Memory Palace** selected.
+
+## Method-of-loci research
+**Prompt:** "how do memory palaces work in real life and how can we adapt and
+improve it for SPECS?"
+→ Cognitive-science grounding (Krokos et al. 2018: HMD palaces +8.8% recall;
+VR MoL feasibility ~22%), core design tension named (spatial sticky notes vs.
+training wheels that fade), encode/walk/recall loop proposed.
+
+## Design synthesis
+**Prompt:** "ok let's design and plan this. Check out this design that Codex
+made, let's incorporate the best ideas from this…" (+ user's multimedia-anchor
+concept: audio + 3D + 2D snap per memory, persistent anchors, outdoor)
+→ DESIGN.md v1: Capture + Train pillars, memory-anchor data model, LLM mnemonic
+transformer, hint ladder, spatial-audio whisper, decay, journeys.
+
+## Capture-flow UX
+**Prompt:** capture wizard questions — start modal? hand UI? gem placeholder?
+"animation of some sort" for abstract concepts? "use bitmoji optionally?"
+→ KB-verified: Snap3D outputs STATIC GLB (→ LLM-tagged procedural animation
+recipes), Bitmoji 3D confirmed on Specs (Mixamo clips via Animation Player).
+Designed Frame → Speak → Place → Conjure with the gem-hatch pattern.
+
+## The Sigil
+**Prompt:** "How can we have the interface on your palm if there's already an
+interface on your palm? The global Snap OS interface?" (+ ethereal swirl +
+ambient aura ask)
+→ Docs: OS reserves only its small system button; rest of the hand is the
+Lens's. Non-dominant back-of-hand swirl per official hand-menu guidelines;
+audio ducking during recording designed in.
+
+## Sound design
+**Prompt:** "We should also have sound design on other events to give juicy
+feedback on interactions."
+→ Full event→SFX map: one pentatonic key, hierarchy by brightness, spatial
+wayfinding pings, mastery melody, never-punish rule.
+
+## Branding
+**Prompt:** "We should also design a logo… Can you generate logos or should I
+provide one?" → three hand-built vector concepts (Keystone / Sigil / Amber);
+**"Wow, I love these! Let's use concept 1"** → Keystone locked, production
+variants generated.
+**Prompt:** "yes let's use that design as the visual north star for the app —
+both in imagery and typography" → Branding/STYLE.md doctrine (palette tokens,
+AR-legibility type rules, orbit-ring = focus indicator, semantic amber).
+
 ## Tue Aug 11 (later) — User bug report: "can't capture anything" + scene mess
 
 **Prompt:** hero gem obscured by the modal; "New Memory" floating in the back;
