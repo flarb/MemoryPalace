@@ -1,5 +1,30 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, later still — UI sizing audit: the pill learns to wrap
+
+**Prompts:** "make sure every UI element is properly sized. Look at this
+one — when I Start train mode, the text spills out." (screenshot: the
+Training "Verify Palace" — follow the ping toast overflowing its plate)
+— then mid-fix: "Make the text wrap".
+
+**Increment:** root cause — the status pill's plate hugged a flex child
+fixed at 15 cm (sized for wizard captions like "Hold steady…") while its
+Text rendered at natural width (Body@150 ≈ 0.64 cm/char → Train's 42-char
+message ≈ 27 cm: spill). Fix: the status text gets a real wrap box
+(24 cm, the same textIn wrap branch the gaze label already proves out)
+and `setStatusText` becomes the plate's single writer — snug single line
+for short captions, wrapped 2–3 lines for long toasts, 68-char ellipsis
+cap; over-estimation biased tall (centered text in a roomy pill, never
+spill). Audit of every text surface: modal toast line ellipsized at 46
+(its slot is deliberately layout-stable — wrap would collide with the
+credit row), picker rows ellipsize palace names at 20 chars ("name — N
+memories" in a 17 cm row; names are user-authored and unbounded),
+transcript/memory-card/gaze-label already wrap, static labels sized at
+build. Compile + boot clean. The synthetic hand went nondeterministic on
+the modal again (two pinch timeouts on a label-verified Train button —
+same episode class as the 2 a.m. note below), so the visual leg is the
+user's 5-second click: press Train, the pill should wrap to two lines.
+
 ## Wed Aug 12, later afternoon — Train mode v1 (recall quiz), on a shoestring
 
 **Prompt:** "ok can we build train mode with what little usage we have left?

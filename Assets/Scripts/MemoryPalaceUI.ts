@@ -84,6 +84,15 @@ function applyTextRole(t: Text, role: TextRole, distanceCm: number = 110): void 
   ;(t as Text & {weight?: number}).weight = TYPE_SCALE[role].weight
 }
 
+// ── Status pill fit (Body @ 150 cm) — wrap + plate sizing for flash() text ──
+// Avg Montserrat advance ≈ 0.53 em; em cm = size / 43.886 (see above).
+const STATUS_WRAP_W = 24    // cm — wrap box width; long toasts break at 2 lines
+const STATUS_LINE_H = 2.2   // cm — one Body @ 150 line slot
+const STATUS_CHAR_W = (roleSize("Body", 150) / 43.886) * 0.53
+const STATUS_MAX_CHARS = 68 // ellipsis cap ⇒ never more than 3 wrapped lines
+const MODAL_LINE_MAX = 46   // modal toast line: Caption capacity of the 22 cm slot
+const PICKER_NAME_MAX = 20  // palace name within "name — N memories" (17 cm row)
+
 // ── Layout constants ─────────────────────────────────────────────────────────
 const LAYOUT_Z_LIFT = 0.02
 const BUTTON_LABEL_Z = 0.08
@@ -179,6 +188,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private pendingHint: string | null = null
   private cardHintText: Text | null = null
   private statusText: Text | null = null
+  private statusPlate: BackPlate | null = null
   private memCardText: Text | null = null
   private comingSoonClear!: DelayedCallbackEvent
 
@@ -224,7 +234,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Transient confirmation line on the modal (same slot as coming-soon). */
   showToast(msg: string): void {
     if (this.comingSoonText) {
-      this.comingSoonText.text = msg
+      // Single-line slot by design (layout-stable) — ellipsize, don't wrap.
+      this.comingSoonText.text =
+        msg.length > MODAL_LINE_MAX ? msg.slice(0, MODAL_LINE_MAX - 1) + "…" : msg
       this.comingSoonClear.reset(2.8)
     }
   }
@@ -245,8 +257,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       const e = entries[i]
       if (e !== undefined) {
         this.pickerRowIds[i] = e.id
+        const nm = e.name.length > PICKER_NAME_MAX
+          ? e.name.slice(0, PICKER_NAME_MAX - 1) + "…" : e.name
         this.pickerRows[i].label.text =
-          e.name + " — " + e.memoryCount + (e.memoryCount === 1 ? " memory" : " memories")
+          nm + " — " + e.memoryCount + (e.memoryCount === 1 ? " memory" : " memories")
         this.pickerRows[i].item.enabled = true
       } else {
         this.pickerRowIds[i] = null
@@ -263,7 +277,23 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   showStatus(): void { this.wantStatus = true; this.applyVisibility() }
   hideStatus(): void { this.wantStatus = false; this.applyVisibility() }
   setStatusText(t: string): void {
-    if (this.statusText) this.statusText.text = t
+    if (!this.statusText) return
+    const s = t.length > STATUS_MAX_CHARS ? t.slice(0, STATUS_MAX_CHARS - 1) + "…" : t
+    this.statusText.text = s
+    // Fit the pill to the message: snug single line, or wrapped lines at
+    // STATUS_WRAP_W (0.85 = word-boundary fill slack). Over-estimating height
+    // is the safe failure — centered text in a slightly tall pill, never spill.
+    const est = s.length * STATUS_CHAR_W
+    let lines = 1
+    let textW = Math.max(12, est + 0.8)
+    if (est > STATUS_WRAP_W) {
+      lines = Math.min(3, Math.ceil(est / (STATUS_WRAP_W * 0.85)))
+      textW = STATUS_WRAP_W
+    }
+    if (this.statusPlate) {
+      // 1.8 / 1.1 = 2 × the column's padX 0.9 / padY 0.55.
+      this.statusPlate.size = new vec2(textW + 1.8, lines * STATUS_LINE_H + 1.1)
+    }
   }
   setStatusPosition(worldPos: vec3): void {
     if (!this.initDone || !this.wantStatus) return
@@ -894,22 +924,23 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.statusRoot.createComponent("Component.Canvas")
     const plate = this.statusRoot.createComponent(BackPlate.getTypeName()) as BackPlate
     plate.style = "dark"
+    this.statusPlate = plate
     this.statusRoot.createComponent(Billboard.getTypeName())
 
     const content = this.obj(this.statusRoot, "Content", new vec3(0, 0, 0.6))
-    const col = this.flexColumn(content, 16, -1, {
+    const col = this.flexColumn(content, STATUS_WRAP_W + 1, -1, {
       gap: 0, padX: 0.9, padY: 0.55,
       justify: FlexJustify.Center, align: FlexAlign.Center,
     })
-    const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
-    flex.onLayoutComplete.add((r) => {
-      plate.size = new vec2(r.containerWidth, r.containerHeight)
-    })
+    // No onLayoutComplete plate-hug here: setStatusText is the plate's single
+    // writer (text-aware wrap fit), so the flex pass never fights it. The flex
+    // tree only centers the child; every show is preceded by setStatusText.
     // Body role scaled for the reticle's ~150 cm viewing distance — the old
     // Caption-at-110 sizing is why the label was unreadable out there.
-    this.flexChild(col, {w: 15, h: 2.2}, (c) => {
+    this.flexChild(col, {w: STATUS_WRAP_W, h: STATUS_LINE_H}, (c) => {
       this.statusText = this.textIn(c, "Hold steady…", "Body", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT, distanceCm: 150,
+        wrap: {w: STATUS_WRAP_W, h: STATUS_LINE_H},
       })
     })
   }
