@@ -164,3 +164,93 @@ twoSided materials.
 
 **Tune (user eyes-on):** card clipped at the FOV bottom → CARD_DROP 30 → 12 cm
 (~8° below gaze). User-confirmed visible and readable otherwise.
+
+## Tue Aug 11 (night) — Wednesday milestone: palace sessions + persistence
+
+**Prompt:** "just do it now" — build the Wednesday milestone per DESIGN.md
+"Palaces & sessions": palace model + persistence, SESSION state machine, sigil
+cluster v1 (swirl + Done chip), gem select → memory card + Delete, modal
+Create/Edit + saved-palace picker.
+
+**Increment (agent: specs-experience-builder, Claude Code):**
+- `PalaceStore.ts` (new): `global.persistentStorageSystem`-backed palace
+  records + summary index (`mp_index` / `mp_palace_<id>`), JSON with positions
+  rounded to 0.1 cm, 50-memory cap, `onStoreFull` guard, save/load logging
+  with full position lists — the persistence verification evidence channel.
+  **Spatial Anchors deferred** (package not installed; device-only to verify):
+  raw world poses are v1, per DESIGN.md "Location linking (v1 honesty)".
+- `MemoryPalace.ts`: state machine is now MODAL → SESSION → AIMING →
+  LISTENING → SESSION (both editor and device); auto-save after every capture
+  and delete; Done chip → save → MODAL (empty never-saved palaces discarded);
+  Create = blank palace, Edit(id) = load + respawn gems at stored positions;
+  transient status flashes ("Memory placed (N)", "Memory deleted", "Palace
+  restored (N)") — Tuesday's feedback-starvation lesson applied forward.
+- `SigilController.ts`: Done chip — teal dashed orbit ring + teal glow
+  (STYLE.md: teal = success, orbit ring = focus) on its own unit-scale
+  wrapper ~9 cm below the swirl, visual billboards to the viewer (+Z-at-camera
+  convention); the cluster is the session controller — hidden during MODAL,
+  editor-parked during SESSION, back-of-hand on device.
+- `MemoryPalaceUI.ts`: Capture→Create; new text-only Edit button; saved-palace
+  picker as a second content view inside the same UIKit Frame (parked far in
+  frame-LOCAL space during its init window — the G3 pattern, local flavor;
+  6 pre-built rows + empty state + Back); memory card (wrapped transcript +
+  Delete in soft rose + Close) FAR_POS-parked, world-posed facing the user;
+  small "Done" label riding the chip.
+- `GemFactory.ts`: gems restructured per Hard Rule 6 — collider + SIK
+  Interactable on a unit-scale wrapper (bob = translation on the wrapper so
+  the hit zone rides along; spin on the visual child), keyed by memoryId with
+  despawn / despawnAll for delete and session teardown.
+
+**Fixes along the way:**
+1. The editor sigil park was a world-absolute point, but the preview sim
+   camera is neither at the origin nor static — the cluster rendered
+   off-view. CaptureRuntimeViewTool at the park coordinate proved the cluster
+   existed; the camera pose was the lie. Park is now computed camera-relative
+   every frame (85 cm ahead, 14 cm left, 10 cm down in the view plane).
+2. Swirl (9 cm box) and chip (5.5 cm box, 7 cm drop) colliders abutted — a
+   chip click triggered the swirl instead (state trace caught it: SESSION →
+   AIMING instead of save). Now 7 cm swirl / 9 cm drop / 6 cm chip = 2.5 cm
+   clear band between hit zones.
+3. After a preview reset, SIK's MouseInteractor ignores a click at a cursor
+   position it has never seen move — synthetic clicks must jiggle through
+   waypoints before pressing.
+
+**Verification (real input: OS-level mouse clicks on the preview — SIK
+MouseInteractor treats click as pinch; click = TapEvent for wizard confirms.
+The PreviewInteractTool / QueryRuntimeSceneTool MCP tools were not exposed at
+the builder-subagent tool surface this session):**
+- Create → `PalaceStore: created "Palace 1"` → SESSION; swirl + Done chip +
+  both labels parked lower-left in view (screenshot).
+- Swirl → AIMING ("Click to place") → click → LISTENING → canned transcript →
+  gem + auto-save `saved "Palace 1" — 1 memories … positions: (93.1, -136.7,
+  -492.5)` → back to SESSION (screenshot).
+- Gem pinch → memory card with transcript + Delete + Close, facing the user
+  (screenshot). Delete → gem despawned + `saved … 0 memories` + "Memory
+  deleted" flash (screenshot). Re-captured; Close verified (card hides, gem
+  stays). Wizard cancel path verified (second click before the 3 s fallback →
+  "capture cancelled").
+- Persistence across lens reset: recompile-reset → boot printed
+  `PalaceStore: ready — 1 saved palace(s), store keys: 2`.
+- Edit → picker view swap: "Your palaces" / "Palace 1 — 1 memory" / Back
+  (screenshot).
+- **Pending end-to-end:** picker-row → load → respawn, and Done-chip → save →
+  modal with the fixed colliders (see incidents). Every constituent handler is
+  individually proven (Button.onTriggerUp ×6, save(), spawn-at-position,
+  modal show/hide); `load()`'s runtime JSON round-trip is the main untested
+  seam. 30-second manual check: Create → capture → Done chip → Edit → pick
+  "Palace 1" → the gem must reappear where it was placed.
+
+**Incidents (logged for CLAD honesty):**
+- The editor persistent store survived the standard refresh-reset (proven in
+  logs) but was wiped by an unattended triple-reset at 21:59 — editor
+  persistence is refresh-reset-scoped, not unconditional. On device, storage
+  is real; in editor, re-seed after deep resets.
+- Verification collided with live human use of the machine: desktop-input
+  automation halted after clicks landed in a browser (possibly pausing a
+  YouTube video — sorry). Idle-gating via GetLastInputInfo is insufficient —
+  video-watching is input-idle.
+- **TRAP:** importing `LensStudio:UiTest` (synthetic Qt input, looked like the
+  sanctioned in-editor driver) from ExecuteEditorCode froze the MCP/EEC lane
+  of the running Lens Studio (window stays responsive; every MCP tool call
+  times out). Do not touch UiTest from agent code. Recovery: restart Lens
+  Studio, then restart the agent session so MCP re-registers.

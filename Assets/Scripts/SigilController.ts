@@ -1,46 +1,73 @@
 /**
- * SigilController — the back-of-hand summon (DESIGN.md "Sigil v0").
+ * SigilController — the sigil cluster, i.e. the session controller
+ * (DESIGN.md "Palaces & sessions": it exists only inside Create/Edit sessions).
  *
- * An ethereal swirl (two counter-rotating helical ribbons + a soft glow disc,
- * violet/teal, additive) that blooms above the back of the LEFT (non-dominant)
- * hand via SIK hand tracking. Tapping/pinching it (dominant hand) starts the
- * capture wizard. Back-of-hand placement keeps clear of the palm-side Snap OS
- * system button.
+ * Two affordances:
+ *  - Swirl (violet, counter-rotating ribbons + glow disc): tap → capture wizard.
+ *  - Done chip (teal dashed orbit ring + teal glow, ~7 cm below the swirl):
+ *    tap → save the palace and return to the modal. Teal = success and the
+ *    orbit ring = focus per STYLE.md; visually distinct from the violet swirl.
  *
- * Hard Rule 6 compliance: the collider + Interactable live on a unit-scale,
- * identity-rotation wrapper; rotation/scale pulses go on leaf visual children.
+ * Placement: back of the LEFT hand on device (SIK hand tracking); in the
+ * editor the whole cluster parks at a fixed world position where the mouse
+ * (SIK MouseInteractor treats click as pinch) can drive both affordances.
  *
- * Editor preview: raw hand tracking doesn't fire in Lens Studio preview, so in
- * the editor the sigil parks at a fixed world position where the mouse
- * (SIK MouseInteractor) can click it — keeps the wizard fully drivable.
+ * Hard Rule 6: each affordance's collider + Interactable live on its own
+ * unit-scale, identity-rotation wrapper; rotation/scale pulses go on leaf
+ * visual children only.
  */
 import { Interactable } from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable";
 import { HandInputData } from "SpectaclesInteractionKit.lspkg/Providers/HandInputData/HandInputData";
+import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider";
 import Event, { PublicApi } from "SpectaclesInteractionKit.lspkg/Utils/Event";
-import { buildRibbonMesh, buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
+import { buildRibbonMesh, buildDiscMesh, buildDashedRingMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
 
-const EDITOR_SIGIL_POS = new vec3(-22, -12, -85);
-const COLLIDER_SIZE = 9;      // cm cube around the ~6cm swirl
+// Editor park: lower-left IN VIEW (DESIGN.md), computed camera-relative each
+// frame — the sim camera is neither at the world origin nor static, so any
+// absolute world point (the v0 approach) drifts out of frame. 85 cm ahead,
+// 14 cm left / 10 cm down in the view plane ≈ 9.4° left, 6.7° down — swirl,
+// chip, and labels all inside the Specs preview half-FOV (≈13.5° h, 19° v).
+const EDITOR_PARK_FWD = 85;    // cm ahead of the camera
+const EDITOR_PARK_LEFT = 14;   // cm left in the view plane
+const EDITOR_PARK_DOWN = 10;   // cm down in the view plane
+// Collider sizing: the swirl and chip boxes must NOT abut — with a 9 cm swirl
+// box and a 7 cm drop, the chip's top edge sat inside the swirl's box and a
+// mouse ray at the chip's upper half triggered the swirl (verified misfire).
+// 7 cm swirl box + 9 cm drop + 6 cm chip box leaves a 2.5 cm clear band.
+const COLLIDER_SIZE = 7;      // cm cube around the ~6cm swirl
 const HOVER_OFFSET = 4;       // cm off the back of the hand
 const LABEL_OFFSET = 8;       // cm above the swirl for the "New Memory" tag
+const CHIP_DROP = 9;          // cm below the swirl (DESIGN.md: Done chip below)
+const CHIP_COLLIDER = 6;      // cm cube around the ~4cm chip
+const CHIP_LABEL_DROP = 4.5;  // cm below the chip for the "Done" tag
 
 export class SigilController {
   private _onTapped = new Event<void>();
   get onTapped(): PublicApi<void> { return this._onTapped.publicApi(); }
+  private _onDoneTapped = new Event<void>();
+  get onDoneTapped(): PublicApi<void> { return this._onDoneTapped.publicApi(); }
 
   private wrapper: SceneObject;
   private ribbonA: SceneObject;
   private ribbonB: SceneObject;
   private disc: SceneObject;
   private interactable: Interactable;
+
+  private chipWrapper: SceneObject;
+  private chipVisual: SceneObject;
+  private chipRing: SceneObject;
+  private chipInteractable: Interactable;
+
   private hand = HandInputData.getInstance().getHand("left");
+  private camera = WorldCameraFinderProvider.getInstance();
   private editorMode = global.deviceInfoSystem.isEditor();
   private elapsed = 0;
   private active = true;
   private labelAnchor: vec3 | null = null;
+  private doneLabelAnchor: vec3 | null = null;
 
   constructor(parent: SceneObject, ribbonMatA: Material, ribbonMatB: Material, glowMat: Material) {
-    // Unit-scale, identity-rotation wrapper carries collider + Interactable.
+    // ── Swirl: unit-scale wrapper carries collider + Interactable ────────────
     this.wrapper = global.scene.createSceneObject("SigilWrapper");
     this.wrapper.setParent(parent);
 
@@ -74,7 +101,35 @@ export class SigilController {
     rmvD.mesh = buildDiscMesh(4.2, RGB_VIOLET);
     rmvD.mainMaterial = glowMat;
 
+    // ── Done chip: its own unit-scale wrapper below the swirl ────────────────
+    this.chipWrapper = global.scene.createSceneObject("SigilDoneChip");
+    this.chipWrapper.setParent(parent);
+
+    const chipCollider = this.chipWrapper.createComponent("Physics.ColliderComponent") as ColliderComponent;
+    const chipBox = Shape.createBoxShape();
+    chipBox.size = new vec3(CHIP_COLLIDER, CHIP_COLLIDER, CHIP_COLLIDER);
+    chipCollider.shape = chipBox;
+    this.chipInteractable = this.chipWrapper.createComponent(Interactable.getTypeName()) as Interactable;
+
+    // Visual container: faces the viewer each frame (rotation on the leaf,
+    // never the wrapper). Ring + glow are flat +Z meshes.
+    this.chipVisual = global.scene.createSceneObject("DoneChipVisual");
+    this.chipVisual.setParent(this.chipWrapper);
+
+    this.chipRing = global.scene.createSceneObject("DoneChipRing");
+    this.chipRing.setParent(this.chipVisual);
+    const rmvRing = this.chipRing.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    rmvRing.mesh = buildDashedRingMesh(2.0, 0.35, 10, 0.4, RGB_TEAL);
+    rmvRing.mainMaterial = glowMat;
+
+    const chipGlow = global.scene.createSceneObject("DoneChipGlow");
+    chipGlow.setParent(this.chipVisual);
+    const rmvGlow = chipGlow.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    rmvGlow.mesh = buildDiscMesh(1.6, RGB_TEAL);
+    rmvGlow.mainMaterial = glowMat;
+
     this.wrapper.enabled = false;
+    this.chipWrapper.enabled = false;
   }
 
   /** Call from the main script's OnStartEvent (SIK init-order rule). */
@@ -82,19 +137,30 @@ export class SigilController {
     this.interactable.onTriggerEnd.add(() => {
       if (this.active) this._onTapped.invoke();
     });
+    this.chipInteractable.onTriggerEnd.add(() => {
+      if (this.active) this._onDoneTapped.invoke();
+    });
   }
 
-  /** Suppressed during the capture wizard to prevent accidental re-entry. */
+  /**
+   * The cluster is the session controller: active only during SESSION states
+   * (hidden during MODAL and while the capture wizard runs).
+   */
   setActive(v: boolean): void {
     this.active = v;
     if (!v) {
       this.wrapper.enabled = false;
+      this.chipWrapper.enabled = false;
       this.labelAnchor = null;
+      this.doneLabelAnchor = null;
     }
   }
 
   /** World position for the "New Memory" label, or null when hidden. */
   getLabelAnchor(): vec3 | null { return this.labelAnchor; }
+
+  /** World position for the "Done" label, or null when hidden. */
+  getDoneLabelAnchor(): vec3 | null { return this.doneLabelAnchor; }
 
   update(dt: number, camPos: vec3): void {
     this.elapsed += dt;
@@ -102,14 +168,16 @@ export class SigilController {
 
     let pos: vec3 | null = null;
     if (this.editorMode) {
-      pos = EDITOR_SIGIL_POS;
+      pos = this.editorParkPosition(camPos);   // lower-left in view, mouse-drivable
     } else if (this.hand.isTracked()) {
       pos = this.backOfHandPosition(camPos);
     }
 
     if (pos === null) {
       this.wrapper.enabled = false;
+      this.chipWrapper.enabled = false;
       this.labelAnchor = null;
+      this.doneLabelAnchor = null;
       return;
     }
 
@@ -124,6 +192,35 @@ export class SigilController {
     this.ribbonA.getTransform().setLocalScale(new vec3(s, s, s));
     this.ribbonB.getTransform().setLocalScale(new vec3(s, s, s));
     this.disc.getTransform().setLocalScale(new vec3(s, s, s));
+
+    // Done chip rides below the swirl; visual faces the viewer.
+    const chipPos = new vec3(pos.x, pos.y - CHIP_DROP, pos.z);
+    this.chipWrapper.enabled = true;
+    this.chipWrapper.getTransform().setWorldPosition(chipPos);
+    this.doneLabelAnchor = new vec3(chipPos.x, chipPos.y - CHIP_LABEL_DROP, chipPos.z);
+
+    // LS API: quat.lookAt aims +Z along its argument; the ring/disc meshes
+    // face +Z → aim +Z AT the camera (the proven Tuesday convention).
+    const toCam = camPos.sub(chipPos).normalize();
+    const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
+    this.chipVisual.getTransform().setWorldRotation(quat.lookAt(toCam, upRef));
+    const cs = 1 + 0.06 * Math.sin((this.elapsed * Math.PI * 2) / 3 + 1.3);
+    this.chipVisual.getTransform().setLocalScale(new vec3(cs, cs, cs));
+    // Slow dash orbit on the ring leaf (composes with the visual's facing).
+    this.chipRing.getTransform().setLocalRotation(quat.angleAxis(this.elapsed * 0.6, new vec3(0, 0, 1)));
+  }
+
+  /** Editor: park lower-left in the CURRENT view (view-plane offsets). */
+  private editorParkPosition(camPos: vec3): vec3 {
+    const fwdPoint = this.camera.getForwardPosition(EDITOR_PARK_FWD, false);
+    const viewDir = fwdPoint.sub(camPos).normalize();
+    let right = viewDir.cross(vec3.up());
+    if (right.length < 0.05) right = vec3.right();   // looking straight up/down
+    right = right.normalize();
+    const viewUp = right.cross(viewDir).normalize();
+    return fwdPoint
+      .sub(right.uniformScale(EDITOR_PARK_LEFT))
+      .sub(viewUp.uniformScale(EDITOR_PARK_DOWN));
   }
 
   /**

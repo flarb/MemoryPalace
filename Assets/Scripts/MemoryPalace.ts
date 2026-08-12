@@ -1,15 +1,20 @@
 /**
- * MemoryPalace — main experience script (Tuesday v0 milestone).
+ * MemoryPalace — main experience script (Wednesday milestone: palace sessions
+ * + persistence).
  *
  * State machine:
- *   MODAL     start modal visible, sigil live ("glance at your left hand").
- *   IDLE      modal dismissed; sigil is the capture affordance.
- *   AIMING    reticle floats at gaze; pinch (device) or 2.5 s auto (editor)
- *             confirms the anchor point.  [full frame-draw lands Wednesday]
+ *   MODAL     start modal visible (Create / Edit / Explore / Train); the sigil
+ *             cluster is hidden — it exists only inside sessions (DESIGN.md).
+ *   SESSION   editing session: sigil cluster live (hand on device, parked in
+ *             editor). Swirl tap → capture wizard; gem tap → memory card;
+ *             Done chip → save → MODAL. Auto-saves after every capture/delete.
+ *   AIMING    reticle at gaze; pinch (device) / click (editor) confirms.
  *   LISTENING ASR streams onto the transcript card; auto-stop on ~1.2 s
- *             silence or pinch; canned transcript in the editor.
- *   → gem drops free-floating at the anchor (in-session only; persistence
- *     lands Wednesday), back to IDLE.
+ *             silence or pinch/click; canned transcript in the editor.
+ *   → gem drops at the anchor, memory recorded, auto-saved, back to SESSION.
+ *
+ * Persistence: PalaceStore (global.persistentStorageSystem). Spatial Anchors
+ * deferred — raw world poses are the v1 (DESIGN.md "Location linking").
  *
  * All 3D content assembles here at runtime (script-driven scene assembly);
  * every visible string lives in MemoryPalaceUI.
@@ -19,6 +24,10 @@ import { SigilController } from "./SigilController";
 import { ReticleController } from "./ReticleController";
 import { GemFactory } from "./GemFactory";
 import { AsrController } from "./AsrController";
+import {
+  PalaceStore, Palace, MemoryRecord,
+  toStoredVec3, fromStoredVec3, freshMemoryId, MAX_MEMORIES_PER_PALACE,
+} from "./PalaceStore";
 import { HandInputData } from "SpectaclesInteractionKit.lspkg/Providers/HandInputData/HandInputData";
 import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider";
 
@@ -31,14 +40,11 @@ const GEM_SURFACE_OFFSET = 5;                   // cm along the hit normal (half
 const CARD_DISTANCE = 90;                       // cm ahead for the listening card
 const CARD_DROP = 12;                           // cm below gaze in the view plane (~8° — lower-mid, clear of FOV bottom)
 const CARD_LERP = 8;                            // soft-follow responsiveness
+const MEMCARD_LIFT = 14;                        // cm above a selected gem
+const MEMCARD_PULL = 12;                        // cm from the gem toward the viewer
+const FLASH_S = 2.4;                            // transient status flash duration
 
-type WizardState = "MODAL" | "IDLE" | "AIMING" | "LISTENING";
-
-interface MemoryRecord {
-  transcript: string;
-  position: vec3;
-  createdAt: number;
-}
+type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING";
 
 @component
 export class MemoryPalace extends BaseScriptComponent {
@@ -57,38 +63,51 @@ export class MemoryPalace extends BaseScriptComponent {
   private reticle!: ReticleController;
   private gems!: GemFactory;
   private asr = new AsrController();
-  private memories: MemoryRecord[] = [];
+  private store!: PalaceStore;
+  private palace: Palace | null = null;
+  private selectedMemoryId: string | null = null;
 
   private editorMode = global.deviceInfoSystem.isEditor();
   private stateAge = 0;
   private cardPos = vec3.zero();
   private cardRot = quat.quatIdentity();
+  private flashRemaining = 0;
 
   onAwake() {
     this.buildScene();
+    this.store = new PalaceStore();
+    this.sigil.setActive(false);   // cluster is session-only (MODAL at boot)
 
     this.createEvent("UpdateEvent").bind(() => this.onUpdate());
 
     // Editor: mouse click = TapEvent — the explicit place/stop confirm.
     // Device uses raw pinch (OnStart below). No auto-placement anywhere.
+    // SESSION clicks land on Interactables (swirl/chip/gems/buttons); the
+    // TapEvent that fires alongside them is ignored outside AIMING/LISTENING.
     this.createEvent("TapEvent").bind(() => {
       if (this.editorMode) this.onConfirmGesture();
     });
 
     this.createEvent("OnStartEvent").bind(() => {
       // UI events (Channel A).
-      this.uiHud.onCapture.add(() => this.startWizard());
-      // Explore/Train: the UI shows its own coming-soon hint (Tuesday scope).
+      this.uiHud.onCreate.add(() => this.onCreatePalace());
+      this.uiHud.onEditRequested.add(() => {
+        this.uiHud.showPalacePicker(this.store.listPalaces().map((s) => ({
+          id: s.id, name: s.name, memoryCount: s.memoryCount,
+        })));
+      });
+      this.uiHud.onEditPalace.add((id: string) => this.onEditPalace(id));
+      this.uiHud.onCardDelete.add(() => this.onDeleteSelected());
+      this.uiHud.onCardClose.add(() => this.closeMemoryCard());
+      // Explore/Train: the UI shows its own coming-soon hint (Wednesday scope).
 
-      // Sigil tap → wizard (SIK subscriptions bind in OnStart).
+      // Sigil cluster (SIK subscriptions bind in OnStart).
       this.sigil.start();
       this.sigil.onTapped.add(() => this.startWizard());
+      this.sigil.onDoneTapped.add(() => this.finishSession());
 
-      // Editor: no hands — the modal is the whole affordance; the sigil (and
-      // its parked stand-in) exists only on device.
       if (this.editorMode) {
-        this.sigil.setActive(false);
-        this.uiHud.setHintText("Press Capture, then hold the view steady");
+        this.uiHud.setHintText("Press Create to start a palace");
         this.uiHud.setCardHint("Click to finish");
       }
 
@@ -127,15 +146,81 @@ export class MemoryPalace extends BaseScriptComponent {
     return mat;
   }
 
+  // ── Session lifecycle ──────────────────────────────────────────────────────
+
+  private onCreatePalace(): void {
+    if (this.state !== "MODAL") return;
+    this.palace = this.store.createPalace();
+    this.enterSession(false);
+  }
+
+  private onEditPalace(id: string): void {
+    if (this.state !== "MODAL") return;
+    const loaded = this.store.load(id);
+    if (loaded === null) {
+      this.uiHud.showToast("Couldn't load that palace");
+      return;
+    }
+    this.palace = loaded;
+    for (const rec of loaded.memories) {
+      this.spawnMemoryGem(rec);
+    }
+    this.enterSession(true);
+  }
+
+  private enterSession(restored: boolean): void {
+    this.uiHud.hideModal();
+    this.sigil.setActive(true);
+    this.setState("SESSION");
+    if (restored && this.palace !== null && this.palace.memories.length > 0) {
+      this.flash("Palace restored (" + this.palace.memories.length + ")",
+        this.camera.getForwardPosition(100, false));
+    }
+  }
+
+  /** Done chip: save the palace (auto-saves already ran) and return home. */
+  private finishSession(): void {
+    if (this.state !== "SESSION") return;
+    this.closeMemoryCard();
+    this.gems.despawnAll();
+    this.uiHud.hideSigilLabel();
+    this.uiHud.hideDoneLabel();
+    this.uiHud.hideStatus();
+    this.flashRemaining = 0;
+    this.sigil.setActive(false);
+
+    const p = this.palace;
+    this.palace = null;
+    this.uiHud.showModal();
+    if (p !== null) {
+      if (p.memories.length === 0 && !this.store.has(p.id)) {
+        print("MemoryPalace: empty unsaved palace discarded (" + p.id + ")");
+        this.uiHud.showToast("Empty palace discarded");
+      } else {
+        this.store.save(p);
+        this.uiHud.showToast("Palace saved — " + p.memories.length +
+          (p.memories.length === 1 ? " memory" : " memories"));
+      }
+    }
+    this.setState("MODAL");
+  }
+
   // ── Wizard flow ────────────────────────────────────────────────────────────
 
   private startWizard(): void {
-    if (this.state !== "MODAL" && this.state !== "IDLE") return;
+    if (this.state !== "SESSION") return;
+    if (this.palace === null) return;
+    if (this.palace.memories.length >= MAX_MEMORIES_PER_PALACE) {
+      this.flash("Palace is full", this.camera.getForwardPosition(80, false));
+      return;
+    }
+    this.closeMemoryCard();
     this.setState("AIMING");
-    this.uiHud.hideModal();
     this.uiHud.hideSigilLabel();
+    this.uiHud.hideDoneLabel();
     this.sigil.setActive(false);
     this.reticle.show();
+    this.flashRemaining = 0;
     this.uiHud.showStatus();
     this.uiHud.setStatusText(this.editorMode ? "Click to place" : "Pinch to place");
   }
@@ -163,36 +248,98 @@ export class MemoryPalace extends BaseScriptComponent {
   private finishCapture(transcript: string): void {
     if (this.state !== "LISTENING") return;
     const anchor = this.reticle.getPoint();
+    const surfaceNormal = this.reticle.getNormal();
     this.reticle.hide();
     this.uiHud.hideTranscript();
 
-    if (transcript.length > 0) {
+    let flashText = "Capture cancelled";
+    let flashPos = this.camera.getForwardPosition(80, false);
+
+    if (transcript.length > 0 && this.palace !== null) {
       // The gem IS the memory marker (DESIGN.md) — sits just off the surface
       // when the reticle snapped, free-floats otherwise.
-      const surfaceNormal = this.reticle.getNormal();
       const gemPos = surfaceNormal !== null
         ? anchor.add(surfaceNormal.uniformScale(GEM_SURFACE_OFFSET))
         : anchor;
-      this.gems.spawn(gemPos, PLACED_GEM_SCALE);
-      this.memories.push({ transcript: transcript, position: gemPos, createdAt: getTime() });
-      print("MemoryPalace: captured \"" + transcript + "\" (" + this.memories.length + " memories)");
+      const rec: MemoryRecord = {
+        id: freshMemoryId(),
+        transcript: transcript,
+        position: toStoredVec3(gemPos),
+        createdAt: Date.now(),
+      };
+      if (surfaceNormal !== null) rec.surfaceNormal = toStoredVec3(surfaceNormal);
+      this.palace.memories.push(rec);
+      this.spawnMemoryGem(rec);
+      this.store.save(this.palace);   // auto-save after every capture
+      print("MemoryPalace: captured \"" + transcript + "\" (" +
+        this.palace.memories.length + " memories in " + this.palace.name + ")");
+      flashText = "Memory placed (" + this.palace.memories.length + ")";
+      flashPos = new vec3(gemPos.x, gemPos.y + 12, gemPos.z);
     } else {
       print("MemoryPalace: capture cancelled (empty transcript)");
     }
 
-    if (this.editorMode) {
-      // No hands in preview — the modal returns as the next-capture affordance,
-      // with a visible confirmation so the flow never reads as "nothing happened".
-      this.uiHud.showModal();
-      this.uiHud.showToast(transcript.length > 0
-        ? "✓ Memory placed — " + this.memories.length + " total"
-        : "Capture cancelled");
-      this.setState("MODAL");
-    } else {
-      this.sigil.setActive(true);
-      this.setState("IDLE");
-    }
+    // Both editor and device return to the session — the sigil cluster is the
+    // next-capture affordance; the Done chip is the exit.
+    this.sigil.setActive(true);
+    this.setState("SESSION");
+    this.flash(flashText, flashPos);
   }
+
+  // ── Gem selection → memory card ────────────────────────────────────────────
+
+  private spawnMemoryGem(rec: MemoryRecord): void {
+    this.gems.spawn(fromStoredVec3(rec.position), PLACED_GEM_SCALE, rec.id,
+      (memoryId) => this.onGemSelected(memoryId));
+  }
+
+  private onGemSelected(memoryId: string): void {
+    if (this.state !== "SESSION" || this.palace === null) return;
+    let rec: MemoryRecord | null = null;
+    for (const m of this.palace.memories) {
+      if (m.id === memoryId) { rec = m; break; }
+    }
+    if (rec === null) return;
+    this.selectedMemoryId = memoryId;
+
+    // Card blooms above the gem, pulled toward the viewer, facing the user.
+    const base = fromStoredVec3(rec.position);
+    const camPos = this.camera.getWorldPosition();
+    const toGem = camPos.sub(base);
+    const dir = toGem.length > 1 ? toGem.normalize() : vec3.forward();
+    const pos = new vec3(base.x, base.y + MEMCARD_LIFT, base.z).add(dir.uniformScale(MEMCARD_PULL));
+    // LS API: quat.lookAt aims +Z along its arg; panel front is +Z → aim +Z
+    // AT the camera (the proven Tuesday convention).
+    const toCam = camPos.sub(pos).normalize();
+    const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
+    this.uiHud.showMemoryCard(rec.transcript, pos, quat.lookAt(toCam, upRef));
+    print("MemoryPalace: selected memory \"" + rec.transcript + "\" (" + memoryId + ")");
+  }
+
+  private onDeleteSelected(): void {
+    if (this.state !== "SESSION" || this.palace === null || this.selectedMemoryId === null) return;
+    const id = this.selectedMemoryId;
+    let deletedPos: vec3 | null = null;
+    for (const m of this.palace.memories) {
+      if (m.id === id) { deletedPos = fromStoredVec3(m.position); break; }
+    }
+    this.gems.despawn(id);
+    this.palace.memories = this.palace.memories.filter((m) => m.id !== id);
+    this.store.save(this.palace);   // auto-save after every delete
+    this.closeMemoryCard();
+    print("MemoryPalace: deleted memory " + id + " (" +
+      this.palace.memories.length + " remain)");
+    this.flash("Memory deleted", deletedPos !== null
+      ? new vec3(deletedPos.x, deletedPos.y + 10, deletedPos.z)
+      : this.camera.getForwardPosition(80, false));
+  }
+
+  private closeMemoryCard(): void {
+    this.uiHud.hideMemoryCard();
+    this.selectedMemoryId = null;
+  }
+
+  // ── Gestures & helpers ─────────────────────────────────────────────────────
 
   private onPinchDown(): void {
     this.onConfirmGesture();
@@ -224,7 +371,16 @@ export class MemoryPalace extends BaseScriptComponent {
     }
   }
 
+  /** Transient status flash (billboarded caption) — session feedback juice. */
+  private flash(text: string, worldPos: vec3): void {
+    this.uiHud.setStatusText(text);
+    this.uiHud.showStatus();
+    this.uiHud.setStatusPosition(worldPos);
+    this.flashRemaining = FLASH_S;
+  }
+
   private setState(s: WizardState): void {
+    print("MemoryPalace: state " + this.state + " → " + s);
     this.state = s;
     this.stateAge = 0;
   }
@@ -240,14 +396,27 @@ export class MemoryPalace extends BaseScriptComponent {
     this.gems.update(dt);
     this.asr.update(dt);
 
-    // "New Memory" label rides the sigil (billboarded by the UI module).
-    if (this.state === "MODAL" || this.state === "IDLE") {
+    // Status flash countdown (AIMING owns the status line exclusively).
+    if (this.flashRemaining > 0 && this.state !== "AIMING") {
+      this.flashRemaining -= dt;
+      if (this.flashRemaining <= 0) this.uiHud.hideStatus();
+    }
+
+    // Sigil cluster labels ride the swirl + Done chip during sessions.
+    if (this.state === "SESSION") {
       const anchor = this.sigil.getLabelAnchor();
       if (anchor !== null) {
         this.uiHud.showSigilLabel();
         this.uiHud.setSigilLabelPosition(anchor);
       } else {
         this.uiHud.hideSigilLabel();
+      }
+      const doneAnchor = this.sigil.getDoneLabelAnchor();
+      if (doneAnchor !== null) {
+        this.uiHud.showDoneLabel();
+        this.uiHud.setDoneLabelPosition(doneAnchor);
+      } else {
+        this.uiHud.hideDoneLabel();
       }
     }
 
