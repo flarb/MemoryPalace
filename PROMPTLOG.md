@@ -121,3 +121,21 @@ Driven end-to-end: coordinate-targeted pinch (panel had followed the user's
 preview camera across the room — follow working as designed; uniqueId-targeted
 pinch timed out on the moving far target), wizard HELD in AIMING ~40 s of
 inspection, placed only on injected tap, captured, modal returned.
+
+## Tue Aug 11 (later) — Listening card becomes a lower-third caption
+
+**Prompt:** "this listening UI needs to angle to face the user… or perhaps it
+should detach from the geometry and be a floating and following interface
+that's in the lower half of your vision."
+
+**Increment:** took the second option — the transcript card is speech UI, not
+world furniture. It now soft head-follows every frame: target = gaze forward
+90 cm, dropped 30 cm in the *view plane* (pitch-aware, so it stays lower-third
+even when looking down at a table), full-facing roll-free rotation from a
+guarded view-frame basis, lerp/slerp smoothing (k=8) so it floats rather than
+bolts to the head. Billboard component removed (script drives full pose).
+Card hint is now honest per context: "Pinch to finish" on device, "Click to
+finish" in editor. Verified across three driven capture cycles (zero errors);
+the card's final frozen pose confirmed ~90 cm out, below gaze line, composite
+facing rotation — the screenshot race lost to a 5-second state, the runtime
+query didn't.

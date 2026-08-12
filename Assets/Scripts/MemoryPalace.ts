@@ -28,6 +28,9 @@ const PLACED_GEM_SCALE = 0.15;                  // ~9 cm
 const AIM_DISTANCE = 150;                       // cm along gaze (reticle + gem)
 const PINCH_DEBOUNCE_S = 0.4;
 const GEM_SURFACE_OFFSET = 5;                   // cm along the hit normal (half gem + clearance)
+const CARD_DISTANCE = 90;                       // cm ahead for the listening card
+const CARD_DROP = 30;                           // cm below gaze in the view plane (~18° — lower third)
+const CARD_LERP = 8;                            // soft-follow responsiveness
 
 type WizardState = "MODAL" | "IDLE" | "AIMING" | "LISTENING";
 
@@ -58,6 +61,8 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private editorMode = global.deviceInfoSystem.isEditor();
   private stateAge = 0;
+  private cardPos = vec3.zero();
+  private cardRot = quat.quatIdentity();
 
   onAwake() {
     this.buildScene();
@@ -84,6 +89,7 @@ export class MemoryPalace extends BaseScriptComponent {
       if (this.editorMode) {
         this.sigil.setActive(false);
         this.uiHud.setHintText("Press Capture, then hold the view steady");
+        this.uiHud.setCardHint("Click to finish");
       }
 
       // Raw pinch (either hand) confirms aim / stops listening on device.
@@ -138,9 +144,11 @@ export class MemoryPalace extends BaseScriptComponent {
     if (this.state !== "AIMING") return;
     this.setState("LISTENING");
     this.uiHud.hideStatus();
-    // Card lands where the user is looking NOW, not at the boot-time forward.
-    const cardAnchor = this.camera.getForwardPosition(105, false);
-    this.uiHud.setTranscriptCardPosition(new vec3(cardAnchor.x, cardAnchor.y - 14, cardAnchor.z));
+    // Caption-style card: seed at the lower-third target, then soft-follow.
+    const seed = this.cardTargetPose();
+    this.cardPos = seed.pos;
+    this.cardRot = seed.rot;
+    this.uiHud.setTranscriptCardPose(this.cardPos, this.cardRot);
     this.uiHud.showTranscript();
     this.asr.start({
       onPartial: (t) => this.uiHud.setTranscript(t),
@@ -190,6 +198,21 @@ export class MemoryPalace extends BaseScriptComponent {
     this.onConfirmGesture();
   }
 
+  /** Lower-third caption pose: ahead of gaze, dropped in the view plane. */
+  private cardTargetPose(): { pos: vec3; rot: quat } {
+    const camPos = this.camera.getWorldPosition();
+    const fwdPoint = this.camera.getForwardPosition(CARD_DISTANCE, false);
+    const viewDir = fwdPoint.sub(camPos).normalize();
+    let right = viewDir.cross(vec3.up());
+    if (right.length < 0.05) right = vec3.right();   // looking straight up/down
+    right = right.normalize();
+    const viewUp = right.cross(viewDir).normalize();
+    const pos = fwdPoint.sub(viewUp.uniformScale(CARD_DROP));
+    // Panel front is +Z: aim -Z along the view direction (roll-free via viewUp).
+    const rot = quat.lookAt(viewDir, viewUp);
+    return { pos: pos, rot: rot };
+  }
+
   /** Shared confirm: pinch on device, tap/click in the editor. */
   private onConfirmGesture(): void {
     if (this.stateAge < PINCH_DEBOUNCE_S) return;   // ignore the gesture that got us here
@@ -237,6 +260,16 @@ export class MemoryPalace extends BaseScriptComponent {
       const toCam = camPos.sub(p).normalize();
       this.uiHud.setStatusPosition(
         new vec3(p.x, p.y + 8, p.z).add(toCam.uniformScale(5)));
+    }
+
+    if (this.state === "LISTENING") {
+      // Soft head-follow: the card is speech UI, not world furniture — it
+      // rides the lower third of view so it stays readable while talking.
+      const target = this.cardTargetPose();
+      const k = Math.min(1, dt * CARD_LERP);
+      this.cardPos = vec3.lerp(this.cardPos, target.pos, k);
+      this.cardRot = quat.slerp(this.cardRot, target.rot, k);
+      this.uiHud.setTranscriptCardPose(this.cardPos, this.cardRot);
     }
   }
 

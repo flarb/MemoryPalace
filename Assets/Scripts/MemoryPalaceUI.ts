@@ -110,6 +110,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private transcriptText: Text | null = null
   private hintText: Text | null = null
   private pendingHint: string | null = null
+  private cardHintText: Text | null = null
   private statusText: Text | null = null
   private comingSoonClear!: DelayedCallbackEvent
 
@@ -170,10 +171,17 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.statusRoot.getTransform().setWorldPosition(worldPos)
   }
 
-  /** Move the transcript card to where the user is looking right now. */
-  setTranscriptCardPosition(worldPos: vec3): void {
+  /** Drive the transcript card's full pose (soft head-follow caption). */
+  setTranscriptCardPose(worldPos: vec3, worldRot: quat): void {
     if (!this.initDone) return
-    this.cardRoot.getTransform().setWorldPosition(worldPos)
+    const t = this.cardRoot.getTransform()
+    t.setWorldPosition(worldPos)
+    t.setWorldRotation(worldRot)
+  }
+
+  /** Replace the card's bottom hint copy (pinch on device, click in editor). */
+  setCardHint(t: string): void {
+    if (this.cardHintText) this.cardHintText.text = t
   }
 
   showTranscript(): void {
@@ -341,7 +349,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.cardRoot = this.obj(this.sceneObject, "TranscriptCard", FAR_POS)
     this.realPos["card"] = new vec3(0, -16, 5)   // world z = -105 (UI root at -110)
     this.cardRoot.createComponent("Component.Canvas")
-    this.cardRoot.createComponent(Billboard.getTypeName())   // face the user wherever it lands
+    // No Billboard: the main script drives full pose (soft head-follow,
+    // lower-third caption placement) via setTranscriptCardPose.
     const plate = this.cardRoot.createComponent(BackPlate.getTypeName()) as BackPlate
     plate.style = "dark"
 
@@ -379,7 +388,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     })
 
     this.flexChild(col, {w: 21, h: 1.3}, (c) => {
-      this.textIn(c, "Pinch to finish", "Caption", {
+      this.cardHintText = this.textIn(c, "Pinch to finish", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
       })
     })
