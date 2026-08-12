@@ -1,5 +1,40 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12 — Enhancement management, tinted glow, conjure ring, gaze reveal
+
+**Prompts:** "option to remove the enhancement… make the color of the light
+pool match the general color of the 3D object… some kind of progress wheel…"
+and mid-build: "display the text as a label over the gem… if you gaze at it
+long enough — highlight it with some particle effect and faint looping sound
+before it displays the text label."
+
+**Increment:**
+- Memory card enhance view gains **Remove enhancement** (own row, shown only
+  when the memory is enhanced) → strips the conjured visual, restores the gem
+  + violet glow, persists, vapor-puffs.
+- **Glow tint matching**: Snap3D's concept-image stage (previously ignored) is
+  sampled — `averageTextureColor` via ProceduralTextureProvider (center crop,
+  background-rejected, brightness-normalized) — and the light pool re-tints to
+  the object's palette BEFORE the mesh hatches (foreshadow). Imagen results
+  tint the pool the same way.
+- **Conjure ring**: fast-spinning teal dashed halo rides the gem while
+  generation is in flight (base-hatch/fail stops it) — the progress wheel,
+  in brand language.
+- **Gaze reveal** (the Learn tier of the vanishing interface): 8° cone, 0.8 s
+  dwell → slow orbit ring + rising motes + faint generated hum loop
+  (gazehum.wav, loop-safe: no reverb tail) → transcript label blooms on a
+  billboarded plate above the gem, follows the bob, 1.2 s grace. Session-only,
+  suppressed while the wizard or card is open.
+
+**Verification honesty:** everything compiles clean and the shared plumbing
+(rings = conjure-ring pattern, label = sigil-label pattern, tint = disc-mesh
+rebuild) is machine-verified from earlier passes, but the synthetic hand went
+nondeterministic on this preview session (New-for-Load neighbor hits, phantom
+successes), so the four new interactions were handed to the user as a
+15-second click list rather than force-verified at 2 a.m. Watch-item: rising
+"[AudioSource] Drop audio data" spam in editor logs — benign-looking, ASR
+echo suspected, monitor on device.
+
 ## Wed Aug 12 — Enhance: conjured 3D objects & images via RSG (Friday scope, early)
 
 **Prompt:** "associate a 3D image, animation, or picture with the memory…

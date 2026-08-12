@@ -63,8 +63,12 @@ export class EnhanceService {
     });
   }
 
-  /** onBaseMesh fires once (~30 s); onRefinedMesh may follow and supersede. */
+  /**
+   * onPreview fires first (the 2D concept image — used for glow tinting),
+   * onBaseMesh once (~10–60 s), onRefinedMesh may follow and supersede.
+   */
   generateMesh(memoryId: string, prompt: string,
+               onPreview: (texture: Texture) => void,
                onBaseMesh: (gltfAsset: GltfAsset) => void,
                onRefinedMesh: (gltfAsset: GltfAsset) => void,
                onFailed: (msg: string) => void): void {
@@ -78,7 +82,9 @@ export class EnhanceService {
     })
       .then((status) => {
         status.event.add(([value, assetOrError]) => {
-          if (value === "base_mesh") {
+          if (value === "image") {
+            onPreview((assetOrError as Snap3DTypes.TextureAssetData).texture);
+          } else if (value === "base_mesh") {
             onBaseMesh((assetOrError as Snap3DTypes.GltfAssetData).gltfAsset);
           } else if (value === "refined_mesh") {
             this.inFlight[memoryId] = false;
@@ -87,12 +93,47 @@ export class EnhanceService {
             this.inFlight[memoryId] = false;
             onFailed((assetOrError as Snap3DTypes.ErrorData).errorMsg);
           }
-          // The "image" preview stage is ignored — the gem keeps its shimmer.
         });
       })
       .catch((e) => {
         this.inFlight[memoryId] = false;
         onFailed("Snap3D submit failed: " + e);
       });
+  }
+}
+
+/**
+ * Average color of a texture's center crop (background-darkness rejected),
+ * brightness-normalized so an additive glow stays legible. Falls back to the
+ * brand violet when sampling fails or everything is near-black.
+ */
+export function averageTextureColor(tex: Texture): [number, number, number] {
+  const FALLBACK: [number, number, number] = [124 / 255, 108 / 255, 240 / 255]; // #7c6cf0
+  try {
+    const procTex = ProceduralTextureProvider.createFromTexture(tex);
+    const prov = procTex.control as ProceduralTextureProvider;
+    const w = tex.getWidth();
+    const h = tex.getHeight();
+    if (w < 4 || h < 4) return FALLBACK;
+    const cw = Math.floor(w / 2);
+    const ch = Math.floor(h / 2);
+    const data = new Uint8Array(cw * ch * 4);
+    prov.getPixels(Math.floor(w / 4), Math.floor(h / 4), cw, ch, data);
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < data.length; i += 16) {   // stride 4 pixels
+      const pr = data[i] / 255, pg = data[i + 1] / 255, pb = data[i + 2] / 255;
+      const lum = 0.299 * pr + 0.587 * pg + 0.114 * pb;
+      if (lum < 0.09) continue;   // reject background darkness
+      r += pr; g += pg; b += pb; n++;
+    }
+    if (n === 0) return FALLBACK;
+    r /= n; g /= n; b /= n;
+    const maxc = Math.max(r, Math.max(g, b));
+    if (maxc < 0.01) return FALLBACK;
+    const k = 0.85 / maxc;   // additive glow legibility floor
+    return [Math.min(1, r * k), Math.min(1, g * k), Math.min(1, b * k)];
+  } catch (e) {
+    print("EnhanceService: color sample failed (" + e + ") — brand violet fallback");
+    return FALLBACK;
   }
 }

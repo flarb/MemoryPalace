@@ -121,6 +121,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   get onCardEnhanceMesh(): PublicApi<void> { return this._onCardEnhanceMesh.publicApi() }
   private _onCardEnhanceImage = new Event<void>()
   get onCardEnhanceImage(): PublicApi<void> { return this._onCardEnhanceImage.publicApi() }
+  private _onCardEnhanceRemove = new Event<void>()
+  get onCardEnhanceRemove(): PublicApi<void> { return this._onCardEnhanceRemove.publicApi() }
 
   // ── Panel roots + state ────────────────────────────────────────────────────
   private modalRoot!: SceneObject
@@ -129,13 +131,18 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private doneLabelRoot!: SceneObject
   private statusRoot!: SceneObject
   private memCardRoot!: SceneObject
+  private gazeLabelRoot!: SceneObject
+  private gazeLabelText: Text | null = null
   private memCardActionRow: SceneObject | null = null
   private memCardEnhanceRow: SceneObject | null = null
+  private memCardRemoveRow: SceneObject | null = null
+  private cardHasEnhance = false
   private realPos: {[name: string]: vec3} = {}
 
   private wantModal = true
   private wantCard = false
   private wantLabel = false
+  private wantGazeLabel = false
   private wantDoneLabel = false
   private wantStatus = false
   private wantMemCard = false
@@ -172,6 +179,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.buildSigilLabel()
     this.buildDoneLabel()
     this.buildStatusLine()
+    this.buildGazeLabel()
 
     this.comingSoonClear = this.createEvent("DelayedCallbackEvent") as DelayedCallbackEvent
     this.comingSoonClear.bind(() => { if (this.comingSoonText) this.comingSoonText.text = "" })
@@ -252,6 +260,20 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.statusRoot.getTransform().setWorldPosition(worldPos)
   }
 
+  // Gaze label: the memory's words, revealed by dwelling on its gem.
+  showGazeLabel(): void { this.wantGazeLabel = true; this.applyVisibility() }
+  hideGazeLabel(): void { this.wantGazeLabel = false; this.applyVisibility() }
+  setGazeLabelText(t: string): void {
+    if (this.gazeLabelText) {
+      const MAX = 64
+      this.gazeLabelText.text = t.length > MAX ? t.slice(0, MAX) + "…" : t
+    }
+  }
+  setGazeLabelPosition(worldPos: vec3): void {
+    if (!this.initDone || !this.wantGazeLabel) return
+    this.gazeLabelRoot.getTransform().setWorldPosition(worldPos)
+  }
+
   /** Drive the transcript card's full pose (soft head-follow caption). */
   setTranscriptCardPose(worldPos: vec3, worldRot: quat): void {
     if (!this.initDone) return
@@ -285,7 +307,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   }
 
   /** Memory card next to a selected gem: transcript + Delete + Close. */
-  showMemoryCard(transcript: string, worldPos: vec3, worldRot: quat): void {
+  showMemoryCard(transcript: string, worldPos: vec3, worldRot: quat, hasEnhance: boolean = false): void {
+    this.cardHasEnhance = hasEnhance
     this.setMemCardMode("main")   // reopening always lands on the action row
     if (this.memCardText) {
       const MAX = 140
@@ -326,7 +349,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.labelRoot.getTransform().setLocalPosition(this.realPos["label"])
     this.doneLabelRoot.getTransform().setLocalPosition(this.realPos["donelabel"])
     this.statusRoot.getTransform().setLocalPosition(this.realPos["status"])
+    this.gazeLabelRoot.getTransform().setLocalPosition(this.realPos["gazelabel"])
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = false
+    if (this.memCardRemoveRow !== null) this.memCardRemoveRow.enabled = false
     this.applyVisibility()
   }
 
@@ -338,6 +363,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.labelRoot.enabled = this.wantLabel
     this.doneLabelRoot.enabled = this.wantDoneLabel
     this.statusRoot.enabled = this.wantStatus
+    this.gazeLabelRoot.enabled = this.wantGazeLabel
   }
 
   /** Swap between the modal's main buttons and the palace picker. */
@@ -668,12 +694,23 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       this.rowButton(row, "Image", 6.5, COL_LVIOLET, () => this._onCardEnhanceImage.invoke())
       this.rowButton(row, "Back", 5, COL_MUTED, () => this.setMemCardMode("main"))
     })
+
+    // Remove row (only when the memory already has an enhancement).
+    this.memCardRemoveRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
+      const row = this.flexRow(c, 21, 3, {
+        justify: FlexJustify.Center, align: FlexAlign.Center,
+      })
+      this.rowButton(row, "Remove enhancement", 15, COL_ROSE, () => this._onCardEnhanceRemove.invoke())
+    })
   }
 
-  /** Swap the memory card between its action row and the conjure row. */
+  /** Swap the memory card between its action row and the conjure rows. */
   private setMemCardMode(mode: "main" | "enhance"): void {
     if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
+    if (this.memCardRemoveRow !== null) {
+      this.memCardRemoveRow.enabled = mode === "enhance" && this.cardHasEnhance
+    }
   }
 
   /** Button inside an existing flex row (memory card actions). */
@@ -742,6 +779,31 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.flexChild(col, {w: 4, h: 1.2}, (c) => {
       this.textIn(c, "Done", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEAL,
+      })
+    })
+  }
+
+  private buildGazeLabel(): void {
+    this.gazeLabelRoot = this.obj(this.sceneObject, "GazeLabel", FAR_POS)
+    this.realPos["gazelabel"] = new vec3(0, 0, 0)
+    this.gazeLabelRoot.createComponent("Component.Canvas")
+    const plate = this.gazeLabelRoot.createComponent(BackPlate.getTypeName()) as BackPlate
+    plate.style = "dark"
+    this.gazeLabelRoot.createComponent(Billboard.getTypeName())
+
+    const content = this.obj(this.gazeLabelRoot, "Content", new vec3(0, 0, 0.6))
+    const col = this.flexColumn(content, 15, -1, {
+      gap: 0, padX: 0.9, padY: 0.55,
+      justify: FlexJustify.Center, align: FlexAlign.Center,
+    })
+    const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
+    flex.onLayoutComplete.add((r) => {
+      plate.size = new vec2(r.containerWidth, r.containerHeight)
+    })
+    this.flexChild(col, {w: 14, h: 3.4}, (c) => {
+      this.gazeLabelText = this.textIn(c, "", "Body", {
+        font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT,
+        wrap: {w: 14, h: 3.4}, distanceCm: 150,
       })
     })
   }

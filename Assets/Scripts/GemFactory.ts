@@ -12,7 +12,7 @@
  */
 import { Interactable } from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable";
 import { buildMemoryGemMesh } from "./MemoryGemMesh";
-import { buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
+import { buildDashedRingMesh, buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
 import { EnhanceKind } from "./EnhanceService";
 
 const VAPORIZE_SFX = requireAsset("../GeneratedSFX/vaporize.wav") as AudioTrackAsset;
@@ -81,12 +81,22 @@ interface PendingFit {
   target: number;
 }
 
+interface ConjureRing {
+  memoryId: string;
+  obj: SceneObject;
+}
+
 export class GemFactory {
   private meshCache: {[key: string]: RenderMesh} = {};
   private gems: GemRecord[] = [];
   private dying: DyingGem[] = [];
   private arriving: ArrivingGem[] = [];
   private pendingFit: PendingFit[] = [];
+  private conjureRings: ConjureRing[] = [];
+  private conjureRingMesh: RenderMesh | null = null;
+  private gazeRing: ConjureRing | null = null;
+  private gazeRingMesh: RenderMesh | null = null;
+  private gazeMoteAccum = 0;
   private particles: VaporParticle[] = [];
   private cleanup: TimedCleanup[] = [];
   private burstMat: Material;
@@ -291,6 +301,102 @@ export class GemFactory {
     return false;
   }
 
+  /** Strip the conjured visual and bring the gem look (and violet glow) back. */
+  removeEnhanced(memoryId: string): boolean {
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return false;
+      if (g.enhanced === null) return false;
+      this.clearEnhanced(g);
+      g.visual.enabled = true;
+      this.setGlowTint(memoryId, RGB_VIOLET as [number, number, number]);
+      this.spawnVaporBurst(g.wrapper.getTransform().getWorldPosition());
+      print("GemFactory: enhancement removed for " + memoryId);
+      return true;
+    }
+    return false;
+  }
+
+  /** Re-tint the surface light pool (e.g. to match a conjured object). */
+  setGlowTint(memoryId: string, rgb: [number, number, number]): void {
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (g.glow === null || isNull(g.glow)) return;
+      const rmv = g.glow.getComponent("Component.RenderMeshVisual") as RenderMeshVisual | null;
+      if (rmv) {
+        rmv.mesh = buildDiscMesh(GLOW_RADIUS, [rgb[0], rgb[1], rgb[2]]);
+        print("GemFactory: glow tinted (" + rgb[0].toFixed(2) + ", " +
+          rgb[1].toFixed(2) + ", " + rgb[2].toFixed(2) + ") for " + memoryId);
+      }
+      return;
+    }
+  }
+
+  /** Living gems with their current world positions (for gaze targeting). */
+  gazeCandidates(): { memoryId: string; pos: vec3 }[] {
+    const out: { memoryId: string; pos: vec3 }[] = [];
+    for (const g of this.gems) {
+      if (isNull(g.wrapper)) continue;
+      out.push({ memoryId: g.memoryId, pos: g.wrapper.getTransform().getWorldPosition() });
+    }
+    return out;
+  }
+
+  /**
+   * Slow orbit-ring focus highlight on the gazed gem (STYLE.md: everything
+   * focused earns an orbit) + gentle rising motes while held. Pass null to clear.
+   */
+  setGazeRing(memoryId: string | null): void {
+    if (this.gazeRing !== null) {
+      if (this.gazeRing.memoryId === memoryId) return;   // unchanged
+      if (!isNull(this.gazeRing.obj)) this.gazeRing.obj.destroy();
+      this.gazeRing = null;
+    }
+    if (memoryId === null) return;
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return;
+      if (this.gazeRingMesh === null) {
+        this.gazeRingMesh = buildDashedRingMesh(8, 0.4, 14, 0.5, RGB_TEAL);
+      }
+      const ring = global.scene.createSceneObject("GazeRing");
+      ring.setParent(g.wrapper);
+      ring.getTransform().setLocalPosition(vec3.zero());
+      const rmv = ring.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+      rmv.mesh = this.gazeRingMesh;
+      rmv.mainMaterial = this.burstMat;
+      this.gazeRing = { memoryId: memoryId, obj: ring };
+      this.gazeMoteAccum = 0;
+      return;
+    }
+  }
+
+  /** Fast-spinning dashed halo around the gem while generation is in flight. */
+  setConjuring(memoryId: string, on: boolean): void {
+    for (let i = this.conjureRings.length - 1; i >= 0; i--) {
+      if (this.conjureRings[i].memoryId === memoryId) {
+        if (!isNull(this.conjureRings[i].obj)) this.conjureRings[i].obj.destroy();
+        this.conjureRings.splice(i, 1);
+      }
+    }
+    if (!on) return;
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return;
+      if (this.conjureRingMesh === null) {
+        this.conjureRingMesh = buildDashedRingMesh(7, 0.45, 12, 0.5, RGB_TEAL);
+      }
+      const ring = global.scene.createSceneObject("ConjureRing");
+      ring.setParent(g.wrapper);   // rides the bob with the gem
+      ring.getTransform().setLocalPosition(vec3.zero());
+      const rmv = ring.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+      rmv.mesh = this.conjureRingMesh;
+      rmv.mainMaterial = this.burstMat;
+      this.conjureRings.push({ memoryId: memoryId, obj: ring });
+      return;
+    }
+  }
+
   private clearEnhanced(g: GemRecord): void {
     if (g.enhanced !== null && !isNull(g.enhanced)) g.enhanced.destroy();
     g.enhanced = null;
@@ -417,6 +523,47 @@ export class GemFactory {
         f.holder.getTransform().setLocalScale(new vec3(10, 10, 10));   // skill fallback floor
         print("GemFactory: enhanced mesh unmeasurable — fallback scale 10");
         this.pendingFit.splice(i, 1);
+      }
+    }
+
+    // Conjure halos: flat spin, fast — "working on it".
+    for (let i = this.conjureRings.length - 1; i >= 0; i--) {
+      const cr = this.conjureRings[i];
+      if (isNull(cr.obj)) { this.conjureRings.splice(i, 1); continue; }
+      cr.obj.getTransform().setLocalRotation(
+        quat.angleAxis(this.elapsed * 3.2, vec3.up())
+          .multiply(quat.angleAxis(-Math.PI / 2, vec3.right())));   // lay ring flat, spin about up
+    }
+
+    // Gaze ring: slow contemplative orbit + a drizzle of rising motes.
+    if (this.gazeRing !== null) {
+      if (isNull(this.gazeRing.obj)) {
+        this.gazeRing = null;
+      } else {
+        this.gazeRing.obj.getTransform().setLocalRotation(
+          quat.angleAxis(this.elapsed * 0.9, vec3.up())
+            .multiply(quat.angleAxis(-Math.PI / 2, vec3.right())));
+        this.gazeMoteAccum += dt * 2.5;
+        while (this.gazeMoteAccum >= 1) {
+          this.gazeMoteAccum -= 1;
+          const center = this.gazeRing.obj.getTransform().getWorldPosition();
+          if (this.puffMeshA === null) this.puffMeshA = buildDiscMesh(1.3, RGB_LIGHT_VIOLET);
+          if (this.puffMeshB === null) this.puffMeshB = buildDiscMesh(1.1, RGB_TEAL);
+          const obj = global.scene.createSceneObject("GazeMote");
+          obj.setParent(this.parent);
+          const jitter = new vec3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8);
+          obj.getTransform().setWorldPosition(center.add(jitter));
+          const rmv = obj.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+          rmv.mesh = Math.random() < 0.5 ? this.puffMeshA : this.puffMeshB;
+          rmv.mainMaterial = this.burstMat;
+          this.particles.push({
+            obj: obj,
+            vel: new vec3(0, 9 + Math.random() * 5, 0),
+            age: 0,
+            life: 0.8 + Math.random() * 0.4,
+            size: 0.3 + Math.random() * 0.3,
+          });
+        }
       }
     }
 

@@ -28,11 +28,12 @@ import {
   PalaceStore, Palace, MemoryRecord,
   toStoredVec3, fromStoredVec3, freshMemoryId, MAX_MEMORIES_PER_PALACE,
 } from "./PalaceStore";
-import { EnhanceService, EnhanceKind, buildEnhancePrompt } from "./EnhanceService";
+import { EnhanceService, EnhanceKind, buildEnhancePrompt, averageTextureColor } from "./EnhanceService";
 import { HandInputData } from "SpectaclesInteractionKit.lspkg/Providers/HandInputData/HandInputData";
 import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider";
 
 const BRAND_MAT = requireAsset("../SimpleVertexBaseColor.lspkg/vertexBaseColorMaterial.mat") as Material;
+const GAZE_HUM = requireAsset("../GeneratedSFX/gazehum.wav") as AudioTrackAsset;
 
 const PLACED_GEM_SCALE = 0.15;                  // ~9 cm
 const AIM_DISTANCE = 150;                       // cm along gaze (reticle + gem)
@@ -44,6 +45,12 @@ const CARD_LERP = 8;                            // soft-follow responsiveness
 const MEMCARD_LIFT = 14;                        // cm above a selected gem
 const MEMCARD_PULL = 12;                        // cm from the gem toward the viewer
 const FLASH_S = 2.4;                            // transient status flash duration
+
+const GAZE_COS = Math.cos((8 * Math.PI) / 180); // gaze cone half-angle 8°
+const GAZE_RANGE = 500;                         // cm — gaze reveal reach
+const GAZE_DWELL_S = 0.8;                       // hold before the label blooms
+const GAZE_GRACE_S = 1.2;                       // label lingers after gaze leaves
+const GAZE_LABEL_LIFT = 11;                     // cm above the gem
 
 type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING";
 
@@ -76,6 +83,13 @@ export class MemoryPalace extends BaseScriptComponent {
   private cardRot = quat.quatIdentity();
   private flashRemaining = 0;
 
+  // Gaze-reveal state (the Learn tier of the vanishing interface).
+  private gazeTargetId: string | null = null;
+  private gazeDwell = 0;
+  private gazeRevealed = false;
+  private gazeGrace = 0;
+  private gazeAudio: AudioComponent | null = null;
+
   onAwake() {
     this.buildScene();
     this.store = new PalaceStore();
@@ -104,6 +118,7 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onCardClose.add(() => this.closeMemoryCard());
       this.uiHud.onCardEnhanceMesh.add(() => this.onEnhanceSelected("mesh"));
       this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
+      this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
       // Explore/Train: the UI shows its own coming-soon hint (Wednesday scope).
 
       // Sigil cluster (SIK subscriptions bind in OnStart).
@@ -146,6 +161,14 @@ export class MemoryPalace extends BaseScriptComponent {
     // Plain (non-additive) vertex-color clone for Snap3D GLBs — pairs with
     // use_vertex_color; never pass null to the gltf loader (editor crash).
     this.enhanceMeshMat = BRAND_MAT.clone();
+
+    // Faint dwell hum for the gaze reveal (loops while the ring builds).
+    const humObj = global.scene.createSceneObject("GazeHum");
+    humObj.setParent(root);
+    this.gazeAudio = humObj.createComponent("Component.AudioComponent") as AudioComponent;
+    this.gazeAudio.audioTrack = GAZE_HUM;
+    this.gazeAudio.playbackMode = Audio.PlaybackMode.LowLatency;
+    this.gazeAudio.volume = 0.22;
   }
 
   private makeAdditive(mat: Material): Material {
@@ -332,7 +355,8 @@ export class MemoryPalace extends BaseScriptComponent {
     // AT the camera (the proven Tuesday convention).
     const toCam = camPos.sub(pos).normalize();
     const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
-    this.uiHud.showMemoryCard(rec.transcript, pos, quat.lookAt(toCam, upRef));
+    this.uiHud.showMemoryCard(rec.transcript, pos, quat.lookAt(toCam, upRef),
+      rec.enhance !== undefined);
     print("MemoryPalace: selected memory \"" + rec.transcript + "\" (" + memoryId + ")");
   }
 
@@ -356,6 +380,21 @@ export class MemoryPalace extends BaseScriptComponent {
     this.startEnhance(rec, false);
   }
 
+  private onRemoveEnhancement(): void {
+    if (this.state !== "SESSION" || this.palace === null || this.selectedMemoryId === null) return;
+    const id = this.selectedMemoryId;
+    for (const m of this.palace.memories) {
+      if (m.id === id) { delete m.enhance; break; }
+    }
+    this.store.save(this.palace);
+    this.gems.removeEnhanced(id);
+    this.closeMemoryCard();
+    const p = this.gems.basePosition(id);
+    this.flash("Enhancement removed",
+      p !== null ? new vec3(p.x, p.y + 12, p.z) : null);
+    print("MemoryPalace: enhancement removed for " + id);
+  }
+
   /** Kick generation for a memory's stored enhance spec; visuals hatch async. */
   private startEnhance(rec: MemoryRecord, quiet: boolean): void {
     if (rec.enhance === undefined) return;
@@ -367,22 +406,32 @@ export class MemoryPalace extends BaseScriptComponent {
       this.flash(rec.enhance.kind === "mesh" ? "Conjuring object…" : "Conjuring image…", flashAt());
     }
     print("MemoryPalace: conjuring " + rec.enhance.kind + " for \"" + rec.transcript + "\"");
+    this.gems.setConjuring(rec.id, true);   // spinning halo while we wait
 
     if (rec.enhance.kind === "image") {
       this.enhancer.generateImage(rec.id, rec.enhance.prompt)
         .then((tex) => {
+          this.gems.setConjuring(rec.id, false);
           if (this.gems.setEnhancedImage(rec.id, tex)) {
+            this.gems.setGlowTint(rec.id, averageTextureColor(tex));
             this.flash("✓ Image conjured", flashAt());
             print("MemoryPalace: image conjured for " + rec.id);
           }
         })
         .catch((msg) => {
+          this.gems.setConjuring(rec.id, false);
           this.flash("Conjure failed — try again", flashAt());
           print("MemoryPalace: image conjure failed — " + msg);
         });
     } else {
       this.enhancer.generateMesh(rec.id, rec.enhance.prompt,
+        (preview) => {
+          // The concept image lands before the mesh — tint the light pool so
+          // the glow foreshadows the object's palette.
+          this.gems.setGlowTint(rec.id, averageTextureColor(preview));
+        },
         (baseMesh) => {
+          this.gems.setConjuring(rec.id, false);
           if (this.gems.setEnhancedMesh(rec.id, baseMesh, this.enhanceMeshMat)) {
             this.flash("✓ Object conjured (refining…)", flashAt());
             print("MemoryPalace: base mesh conjured for " + rec.id);
@@ -393,6 +442,7 @@ export class MemoryPalace extends BaseScriptComponent {
           print("MemoryPalace: refined mesh swapped in for " + rec.id);
         },
         (msg) => {
+          this.gems.setConjuring(rec.id, false);
           this.flash("Conjure failed — try again", flashAt());
           print("MemoryPalace: mesh conjure failed — " + msg);
         });
@@ -426,6 +476,72 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private onPinchDown(): void {
     this.onConfirmGesture();
+  }
+
+  // ── Gaze reveal ────────────────────────────────────────────────────────────
+
+  private updateGaze(dt: number, camPos: vec3): void {
+    const fwdPoint = this.camera.getForwardPosition(100, false);
+    const fwd = fwdPoint.sub(camPos).normalize();
+
+    // Best candidate: tightest angle inside the cone, within reach.
+    let bestId: string | null = null;
+    let bestCos = GAZE_COS;
+    for (const c of this.gems.gazeCandidates()) {
+      const v = c.pos.sub(camPos);
+      const dist = v.length;
+      if (dist > GAZE_RANGE || dist < 20) continue;
+      const cos = v.normalize().dot(fwd);
+      if (cos > bestCos) { bestCos = cos; bestId = c.memoryId; }
+    }
+
+    if (bestId === this.gazeTargetId) {
+      this.gazeGrace = 0;
+      if (bestId === null) return;
+      this.gazeDwell += dt;
+      if (!this.gazeRevealed && this.gazeDwell >= GAZE_DWELL_S) {
+        this.gazeRevealed = true;
+        if (this.gazeAudio !== null) this.gazeAudio.stop(false);
+        let transcript = "";
+        if (this.palace !== null) {
+          for (const m of this.palace.memories) {
+            if (m.id === bestId) { transcript = m.transcript; break; }
+          }
+        }
+        this.uiHud.setGazeLabelText(transcript);
+        this.uiHud.showGazeLabel();
+        print("MemoryPalace: gaze reveal \"" + transcript + "\"");
+      }
+      if (this.gazeRevealed) {
+        const p = this.gems.basePosition(bestId);
+        if (p !== null) {
+          this.uiHud.setGazeLabelPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT, p.z));
+        }
+      }
+      return;
+    }
+
+    // Target changed. A revealed label gets a grace period against flicker.
+    if (bestId === null && this.gazeRevealed && this.gazeGrace < GAZE_GRACE_S) {
+      this.gazeGrace += dt;
+      return;
+    }
+    this.clearGaze();
+    if (bestId !== null) {
+      this.gazeTargetId = bestId;
+      this.gems.setGazeRing(bestId);
+      if (this.gazeAudio !== null) this.gazeAudio.play(-1);   // faint loop while dwelling
+    }
+  }
+
+  private clearGaze(): void {
+    if (this.gazeAudio !== null) this.gazeAudio.stop(false);
+    this.gems.setGazeRing(null);
+    this.uiHud.hideGazeLabel();
+    this.gazeTargetId = null;
+    this.gazeDwell = 0;
+    this.gazeRevealed = false;
+    this.gazeGrace = 0;
   }
 
   /** Lower-third caption pose: ahead of gaze, dropped in the view plane. */
@@ -513,6 +629,14 @@ export class MemoryPalace extends BaseScriptComponent {
       const toCam = camPos.sub(p).normalize();
       this.uiHud.setStatusPosition(
         new vec3(p.x, p.y + 8, p.z).add(toCam.uniformScale(5)));
+    }
+
+    // Gaze reveal: dwelling on a gem earns its orbit ring, motes, hum — then
+    // the memory's words bloom above it. Only while free-walking the session.
+    if (this.state === "SESSION" && this.selectedMemoryId === null) {
+      this.updateGaze(dt, camPos);
+    } else if (this.gazeTargetId !== null || this.gazeRevealed) {
+      this.clearGaze();
     }
 
     if (this.state === "LISTENING") {

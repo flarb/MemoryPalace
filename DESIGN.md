@@ -30,6 +30,12 @@ list, most-recent first.
   the same editing session (add and delete alike).
 - **Explore / Train** → run on the *active* palace (last created/loaded).
 
+**Gaze reveal (the Learn tier, SHIPPED):** dwell your gaze on a gem (8° cone,
+≤5 m, 0.8 s) and it earns the teal orbit ring, a drizzle of rising motes, and a
+faint hum — then the memory's words bloom on a billboarded label above it
+(1.2 s grace after gaze leaves). This is how you *read* your palace without
+touching anything; Train mode will progressively suppress it per mastery.
+
 **The editing session** (the core loop the user asked for):
 1. Modal hides. The **sigil cluster** appears — on-device: back of the left
    hand; editor: parked lower-left in view. Two affordances:
