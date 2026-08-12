@@ -24,11 +24,9 @@ import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/
 
 const BRAND_MAT = requireAsset("../SimpleVertexBaseColor.lspkg/vertexBaseColorMaterial.mat") as Material;
 
-const HERO_GEM_POS = new vec3(0, 23.5, -112);   // floats above the start modal
-const HERO_GEM_SCALE = 0.12;                    // ~7 cm
 const PLACED_GEM_SCALE = 0.15;                  // ~9 cm
 const AIM_DISTANCE = 150;                       // cm along gaze (reticle + gem)
-const EDITOR_AIM_AUTOCONFIRM_S = 2.5;
+const EDITOR_AIM_AUTOCONFIRM_S = 3.0;
 const PINCH_DEBOUNCE_S = 0.4;
 
 type WizardState = "MODAL" | "IDLE" | "AIMING" | "LISTENING";
@@ -76,6 +74,13 @@ export class MemoryPalace extends BaseScriptComponent {
       this.sigil.start();
       this.sigil.onTapped.add(() => this.startWizard());
 
+      // Editor: no hands — the modal is the whole affordance; the sigil (and
+      // its parked stand-in) exists only on device.
+      if (this.editorMode) {
+        this.sigil.setActive(false);
+        this.uiHud.setHintText("press Capture, then hold the view steady");
+      }
+
       // Raw pinch (either hand) confirms aim / stops listening on device.
       const handProvider = HandInputData.getInstance();
       const onPinch = () => this.onPinchDown();
@@ -102,10 +107,6 @@ export class MemoryPalace extends BaseScriptComponent {
     this.sigil = new SigilController(root, ribbonMatA, ribbonMatB, glowMat);
     this.reticle = new ReticleController(root, ringMat, glowMat);
     this.gems = new GemFactory(root, BRAND_MAT);
-
-    // Brand hero: one gem floating above the start modal — the same material
-    // story as the logo (gem gradient) and every placed memory.
-    this.gems.spawn(HERO_GEM_POS, HERO_GEM_SCALE);
   }
 
   private makeAdditive(mat: Material): Material {
@@ -124,12 +125,17 @@ export class MemoryPalace extends BaseScriptComponent {
     this.uiHud.hideSigilLabel();
     this.sigil.setActive(false);
     this.reticle.show();
+    this.uiHud.showStatus();
     this.aimElapsed = 0;
   }
 
   private confirmPlacement(): void {
     if (this.state !== "AIMING") return;
     this.setState("LISTENING");
+    this.uiHud.hideStatus();
+    // Card lands where the user is looking NOW, not at the boot-time forward.
+    const cardAnchor = this.camera.getForwardPosition(105, false);
+    this.uiHud.setTranscriptCardPosition(new vec3(cardAnchor.x, cardAnchor.y - 14, cardAnchor.z));
     this.uiHud.showTranscript();
     this.asr.start({
       onPartial: (t) => this.uiHud.setTranscript(t),
@@ -156,8 +162,18 @@ export class MemoryPalace extends BaseScriptComponent {
       print("MemoryPalace: capture cancelled (empty transcript)");
     }
 
-    this.sigil.setActive(true);
-    this.setState("IDLE");
+    if (this.editorMode) {
+      // No hands in preview — the modal returns as the next-capture affordance,
+      // with a visible confirmation so the flow never reads as "nothing happened".
+      this.uiHud.showModal();
+      this.uiHud.showToast(transcript.length > 0
+        ? "✓ memory placed — " + this.memories.length + " total"
+        : "capture cancelled");
+      this.setState("MODAL");
+    } else {
+      this.sigil.setActive(true);
+      this.setState("IDLE");
+    }
   }
 
   private onPinchDown(): void {
@@ -200,13 +216,20 @@ export class MemoryPalace extends BaseScriptComponent {
       const gaze = this.camera.getForwardPosition(AIM_DISTANCE, false);
       this.reticle.update(dt, camPos, gaze);
 
+      // Status line rides just under the reticle so the aim phase explains itself.
+      this.uiHud.setStatusPosition(new vec3(gaze.x, gaze.y - 8, gaze.z));
+
       // Editor: raw pinch never fires in preview — auto-confirm keeps the
       // wizard drivable end-to-end (DESIGN.md preview-testability rule).
       if (this.editorMode) {
         this.aimElapsed += dt;
+        const remain = Math.ceil(EDITOR_AIM_AUTOCONFIRM_S - this.aimElapsed);
+        this.uiHud.setStatusText("placing memory in " + Math.max(1, remain) + "…");
         if (this.aimElapsed >= EDITOR_AIM_AUTOCONFIRM_S) {
           this.confirmPlacement();
         }
+      } else {
+        this.uiHud.setStatusText("pinch to place");
       }
     }
   }

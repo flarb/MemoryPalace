@@ -94,23 +94,28 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private modalRoot!: SceneObject
   private cardRoot!: SceneObject
   private labelRoot!: SceneObject
+  private statusRoot!: SceneObject
   private realPos: {[name: string]: vec3} = {}
 
   private wantModal = true
   private wantCard = false
   private wantLabel = false
+  private wantStatus = false
   private initDone = false
 
   // Dynamic text handles
   private comingSoonText: Text | null = null
   private listeningText: Text | null = null
   private transcriptText: Text | null = null
+  private hintText: Text | null = null
+  private statusText: Text | null = null
   private comingSoonClear!: DelayedCallbackEvent
 
   onAwake() {
     this.buildStartModal()
     this.buildTranscriptCard()
     this.buildSigilLabel()
+    this.buildStatusLine()
 
     this.comingSoonClear = this.createEvent("DelayedCallbackEvent") as DelayedCallbackEvent
     this.comingSoonClear.bind(() => { if (this.comingSoonText) this.comingSoonText.text = "" })
@@ -136,6 +141,36 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       this.comingSoonText.text = mode + " — coming soon"
       this.comingSoonClear.reset(2.2)
     }
+  }
+
+  /** Transient confirmation line on the modal (same slot as coming-soon). */
+  showToast(msg: string): void {
+    if (this.comingSoonText) {
+      this.comingSoonText.text = msg
+      this.comingSoonClear.reset(2.8)
+    }
+  }
+
+  /** Replace the first-run hint copy (editor vs device affordances differ). */
+  setHintText(t: string): void {
+    if (this.hintText) this.hintText.text = t
+  }
+
+  // Status line: small billboarded caption the wizard parks under the reticle.
+  showStatus(): void { this.wantStatus = true; this.applyVisibility() }
+  hideStatus(): void { this.wantStatus = false; this.applyVisibility() }
+  setStatusText(t: string): void {
+    if (this.statusText) this.statusText.text = t
+  }
+  setStatusPosition(worldPos: vec3): void {
+    if (!this.initDone || !this.wantStatus) return
+    this.statusRoot.getTransform().setWorldPosition(worldPos)
+  }
+
+  /** Move the transcript card to where the user is looking right now. */
+  setTranscriptCardPosition(worldPos: vec3): void {
+    if (!this.initDone) return
+    this.cardRoot.getTransform().setWorldPosition(worldPos)
   }
 
   showTranscript(): void {
@@ -171,6 +206,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.initDone = true
     this.cardRoot.getTransform().setLocalPosition(this.realPos["card"])
     this.labelRoot.getTransform().setLocalPosition(this.realPos["label"])
+    this.statusRoot.getTransform().setLocalPosition(this.realPos["status"])
     this.applyVisibility()
   }
 
@@ -179,6 +215,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.modalRoot.enabled = this.wantModal
     this.cardRoot.enabled = this.wantCard
     this.labelRoot.enabled = this.wantLabel
+    this.statusRoot.enabled = this.wantStatus
   }
 
   // ── Panel builders ─────────────────────────────────────────────────────────
@@ -232,7 +269,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
     // First-run hint (Snap hand-menu guideline: users won't find hand UI unaided).
     this.flexChild(col, {w: 22, h: 1.5}, (c) => {
-      this.textIn(c, "glance at your left hand to capture", "Caption", {
+      this.hintText = this.textIn(c, "glance at your left hand to capture", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
       })
     })
@@ -271,6 +308,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.cardRoot = this.obj(this.sceneObject, "TranscriptCard", FAR_POS)
     this.realPos["card"] = new vec3(0, -16, 5)   // world z = -105 (UI root at -110)
     this.cardRoot.createComponent("Component.Canvas")
+    this.cardRoot.createComponent(Billboard.getTypeName())   // face the user wherever it lands
     const plate = this.cardRoot.createComponent(BackPlate.getTypeName()) as BackPlate
     plate.style = "dark"
 
@@ -334,6 +372,30 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.flexChild(col, {w: 7, h: 1.4}, (c) => {
       this.textIn(c, "New Memory", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT,
+      })
+    })
+  }
+
+  private buildStatusLine(): void {
+    this.statusRoot = this.obj(this.sceneObject, "WizardStatus", FAR_POS)
+    this.realPos["status"] = new vec3(0, 0, 0)
+    this.statusRoot.createComponent("Component.Canvas")
+    const plate = this.statusRoot.createComponent(BackPlate.getTypeName()) as BackPlate
+    plate.style = "dark"
+    this.statusRoot.createComponent(Billboard.getTypeName())
+
+    const content = this.obj(this.statusRoot, "Content", new vec3(0, 0, 0.6))
+    const col = this.flexColumn(content, 12, -1, {
+      gap: 0, padX: 0.7, padY: 0.4,
+      justify: FlexJustify.Center, align: FlexAlign.Center,
+    })
+    const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
+    flex.onLayoutComplete.add((r) => {
+      plate.size = new vec2(r.containerWidth, r.containerHeight)
+    })
+    this.flexChild(col, {w: 11, h: 1.4}, (c) => {
+      this.statusText = this.textIn(c, "hold steady…", "Caption", {
+        font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEAL,
       })
     })
   }
