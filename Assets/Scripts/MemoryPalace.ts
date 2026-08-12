@@ -107,7 +107,7 @@ export class MemoryPalace extends BaseScriptComponent {
       this.sigil.onDoneTapped.add(() => this.finishSession());
 
       if (this.editorMode) {
-        this.uiHud.setHintText("Press Create to start a palace");
+        this.uiHud.setHintText("Press New to start a palace");
         this.uiHud.setCardHint("Click to finish");
       }
 
@@ -269,7 +269,7 @@ export class MemoryPalace extends BaseScriptComponent {
       };
       if (surfaceNormal !== null) rec.surfaceNormal = toStoredVec3(surfaceNormal);
       this.palace.memories.push(rec);
-      this.spawnMemoryGem(rec);
+      this.spawnMemoryGem(rec, true);   // fresh placement = arrival juice + SFX
       this.store.save(this.palace);   // auto-save after every capture
       print("MemoryPalace: captured \"" + transcript + "\" (" +
         this.palace.memories.length + " memories in " + this.palace.name + ")");
@@ -288,9 +288,18 @@ export class MemoryPalace extends BaseScriptComponent {
 
   // ── Gem selection → memory card ────────────────────────────────────────────
 
-  private spawnMemoryGem(rec: MemoryRecord): void {
-    this.gems.spawn(fromStoredVec3(rec.position), PLACED_GEM_SCALE, rec.id,
-      (memoryId) => this.onGemSelected(memoryId));
+  private spawnMemoryGem(rec: MemoryRecord, arrive: boolean = false): void {
+    const pos = fromStoredVec3(rec.position);
+    let placeFx: { origin: vec3; normal: vec3 } | undefined = undefined;
+    if (arrive) {
+      const n = rec.surfaceNormal !== undefined
+        ? fromStoredVec3(rec.surfaceNormal).normalize()
+        : vec3.up();
+      // Burst from the gem's BASE — the surface point it sits on.
+      placeFx = { origin: pos.sub(n.uniformScale(GEM_SURFACE_OFFSET)), normal: n };
+    }
+    this.gems.spawn(pos, PLACED_GEM_SCALE, rec.id,
+      (memoryId) => this.onGemSelected(memoryId), placeFx);
   }
 
   private onGemSelected(memoryId: string): void {

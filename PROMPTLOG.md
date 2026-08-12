@@ -1,5 +1,30 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12 — Placement juice, gentler audio, New/Load rename
+
+**Prompt:** vaporize "a bit too loud and dramatic, I want something quieter and
+gentle"; placement needs polish (punch scale + 2D disk particle dispersion from
+the bottom with slight upward velocity + sound); memories should be deletable
+in placement mode; rename Create→New / Edit→Load.
+
+**Increment:**
+- **Vaporize v2**: two soft bells (was three), darker whoosh (4.2 kHz→350 Hz),
+  output attenuated to 42% post-normalize; one-shot AudioComponent volume 0.6.
+- **Placement effect**: gem grows 0→1.18× overshoot→settle (0.36 s); 12
+  additive puffs burst in an even ring in the SURFACE plane (tangent basis from
+  the stored hit normal — flat disk on tables, vertical fan on walls) with
+  slight lift; `place.wav` generated per the DESIGN.md sound map ("low thump +
+  crystal settle") — same pentatonic family one octave down (A4/E5). Restored
+  palaces spawn quietly (arrival juice only on fresh placements).
+- **New/Load rename** with proper icons (Material "add" / "folder_open");
+  hint + empty-state copy updated. Delete-in-New-session confirmed live (it
+  already worked — both session types share the same editor loop).
+- **Bug found by driving, fixed, re-proven**: destroying a gem's Interactable
+  synchronously inside the Delete callback left SIK's InteractionManager
+  dispatching against a null object ("Exception in HostFunction") — the fix is
+  DISABLE, never destroy, interaction components mid-event. Second drive: both
+  AudioPlayer lines (place.wav, vaporize.wav), zero SIK errors.
+
 ## Wed Aug 12 — Vaporize delete effect (first juice + first SFX)
 
 **Prompt:** "When we delete a memory can you give it a cool effect? Like punch

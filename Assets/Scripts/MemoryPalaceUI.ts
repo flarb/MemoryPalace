@@ -38,8 +38,8 @@ import Event, {PublicApi} from "SpectaclesInteractionKit.lspkg/Utils/Event"
 // ── Assets (requireAsset — never @input) ─────────────────────────────────────
 const imageMaterial = requireAsset("../Materials/ImageMaterial.mat") as Material
 const LOGO_TEX = requireAsset("../Textures/logo_keystone.png") as Texture
-const ICON_CREATE = requireAsset("../Icons/photo_camera.png") as Texture
-const ICON_EDIT = requireAsset("../Icons/edit.png") as Texture
+const ICON_NEW = requireAsset("../Icons/add.png") as Texture
+const ICON_LOAD = requireAsset("../Icons/folder_open.png") as Texture
 const ICON_EXPLORE = requireAsset("../Icons/explore.png") as Texture
 const ICON_TRAIN = requireAsset("../Icons/psychology.png") as Texture
 const ICON_MIC = requireAsset("../Icons/mic.png") as Texture
@@ -230,7 +230,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       }
     }
     if (this.pickerEmptyText) {
-      this.pickerEmptyText.text = entries.length === 0 ? "No palaces yet — create one" : ""
+      this.pickerEmptyText.text = entries.length === 0 ? "No palaces yet — press New" : ""
     }
     this.setActiveView("picker")
   }
@@ -436,8 +436,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
     })
 
-    this.addModalButton(col, "Create", ICON_CREATE, () => this._onCreate.invoke())
-    this.addModalButton(col, "Edit", ICON_EDIT, () => this._onEditRequested.invoke())
+    this.addModalButton(col, "New", ICON_NEW, () => this._onCreate.invoke())
+    this.addModalButton(col, "Load", ICON_LOAD, () => this._onEditRequested.invoke())
     this.addModalButton(col, "Explore", ICON_EXPLORE, () => {
       this.showComingSoon("Explore")
       this._onExplore.invoke()
@@ -482,7 +482,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
     // Empty state — text cleared when rows exist (stable layout, toast pattern).
     this.flexChild(col, {w: 22, h: 1.4}, (c) => {
-      this.pickerEmptyText = this.textIn(c, "No palaces yet — create one", "Caption", {
+      this.pickerEmptyText = this.textIn(c, "No palaces yet — press New", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
       })
     })

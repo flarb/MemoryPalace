@@ -11,7 +11,7 @@
 
 ## UI & modes
 
-- **Start modal** (house pattern): follow-panel (UIKit Frame, head-follow + tilt mode) with four buttons — **Create · Edit · Explore · Train** — plus a first-run hint, per Snap's hand-menu guideline that users won't find hand UI without a hint. Create starts a blank palace session; Edit opens the saved-palace picker; Explore/Train run on the active palace.
+- **Start modal** (house pattern): follow-panel (UIKit Frame, head-follow + tilt mode) with four buttons — **New · Load · Explore · Train** — plus a first-run hint, per Snap's hand-menu guideline that users won't find hand UI without a hint. New starts a blank palace session; Load opens the saved-palace picker; Explore/Train run on the active palace. Both session types are identical editors (add AND delete) — the only difference is starting empty vs. restored.
 - **The Sigil — back-of-hand summon.** Snap OS reserves only its small persistent system button on the hand; the rest of the hand is explicitly ours ("Space on the Hand" guideline). Our affordance: glance at the **back of your non-dominant hand** → an **ethereal particle swirl** blooms above the knuckles (VFX Graph, attached via SIK `ObjectTracking3D` hand keypoints) with a floating **"New Memory"** label. Tap/pinch it with the dominant hand → capture wizard starts. Non-dominant placement follows the official guideline (dominant hand stays free for targeting); back-of-hand keeps clear of the system button's spot; SIK's hand occluder lets particles wrap behind fingers for free ethereality.
 - **Sigil availability:** the sigil is the **session controller** — it exists only inside Create/Edit sessions (see Palaces & sessions). Explore and Train stay hands-clean; the modal handles all mode switching.
 - **Aura sound:** the sigil emits a quiet looping new-age ambient pad — positional, anchored to the hand — with an intensity ramp on hover and a chime on select. One "arcana" audio/VFX family reused everywhere: sigil swirl → gem forging shimmer → hatch burst share one particle system restyled, which keeps the aesthetic coherent *and* the particle budget Specs-friendly.
@@ -24,10 +24,10 @@ A **palace** is a named save: an ordered set of memory anchors captured in one
 physical place ("Office", "Living room"). Multiple palaces per user; simple
 list, most-recent first.
 
-- **Create** → new blank palace (auto-named "Palace N", renameable later) →
+- **New** → blank palace (auto-named "Palace N", renameable later) →
   enters an **editing session**.
-- **Edit** → saved-palace picker on the modal → loads that palace's anchors →
-  same editing session.
+- **Load** → saved-palace picker on the modal → loads that palace's anchors →
+  the same editing session (add and delete alike).
 - **Explore / Train** → run on the *active* palace (last created/loaded).
 
 **The editing session** (the core loop the user asked for):

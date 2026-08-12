@@ -15,6 +15,12 @@ import { buildMemoryGemMesh } from "./MemoryGemMesh";
 import { buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL } from "./MemoryMeshes";
 
 const VAPORIZE_SFX = requireAsset("../GeneratedSFX/vaporize.wav") as AudioTrackAsset;
+const PLACE_SFX = requireAsset("../GeneratedSFX/place.wav") as AudioTrackAsset;
+
+const ARRIVE_PUNCH_S = 0.2;       // grow 0 → overshoot
+const ARRIVE_SETTLE_S = 0.16;     // overshoot → 1
+const ARRIVE_PUNCH_SCALE = 1.18;
+const PLACE_PARTICLES = 12;
 
 const VAPOR_PUNCH_S = 0.12;       // punch-out phase
 const VAPOR_SHRINK_S = 0.55;      // shrink-to-nothing phase
@@ -26,6 +32,11 @@ interface DyingGem {
   visual: SceneObject;
   age: number;
   baseWorld: vec3;
+}
+
+interface ArrivingGem {
+  visual: SceneObject;
+  age: number;
 }
 
 interface VaporParticle {
@@ -54,6 +65,7 @@ export class GemFactory {
   private meshCache: {[key: string]: RenderMesh} = {};
   private gems: GemRecord[] = [];
   private dying: DyingGem[] = [];
+  private arriving: ArrivingGem[] = [];
   private particles: VaporParticle[] = [];
   private cleanup: TimedCleanup[] = [];
   private burstMat: Material;
@@ -70,7 +82,8 @@ export class GemFactory {
   }
 
   spawn(worldPos: vec3, gemScale: number, memoryId: string,
-        onSelected: (memoryId: string) => void): SceneObject {
+        onSelected: (memoryId: string) => void,
+        placeFx?: { origin: vec3; normal: vec3 }): SceneObject {
     const key = gemScale.toFixed(3);
     if (!this.meshCache[key]) {
       this.meshCache[key] = buildMemoryGemMesh(gemScale);
@@ -103,6 +116,14 @@ export class GemFactory {
       phase: Math.random() * Math.PI * 2,
       scale: gemScale,
     });
+
+    // Fresh placements arrive with juice; restored palaces spawn quietly.
+    if (placeFx !== undefined) {
+      visual.getTransform().setLocalScale(vec3.zero());   // grows in via update()
+      this.arriving.push({ visual: visual, age: 0 });
+      this.spawnPlaceBurst(placeFx.origin, placeFx.normal);
+      this.playOneShot(PLACE_SFX, worldPos, 0.6);
+    }
     return wrapper;
   }
 
@@ -117,16 +138,19 @@ export class GemFactory {
       this.gems.splice(i, 1);
       if (isNull(g.wrapper)) return true;
 
-      // A dying gem is no longer selectable — drop its interaction pieces now.
+      // A dying gem is no longer selectable. DISABLE (never destroy) the
+      // interaction pieces: destroying an Interactable synchronously inside
+      // an interaction callback leaves SIK's InteractionManager dispatching
+      // against a null object this frame ("Exception in HostFunction").
       const inter = g.wrapper.getComponent(Interactable.getTypeName());
-      if (inter) inter.destroy();
+      if (inter) inter.enabled = false;
       const col = g.wrapper.getComponent("Physics.ColliderComponent");
-      if (col) col.destroy();
+      if (col) col.enabled = false;
 
       const pos = g.wrapper.getTransform().getWorldPosition();
       this.dying.push({ wrapper: g.wrapper, visual: g.visual, age: 0, baseWorld: pos });
       this.spawnVaporBurst(pos);
-      this.playVaporizeSfx(pos);
+      this.playOneShot(VAPORIZE_SFX, pos, 0.6);
       return true;
     }
     return false;
@@ -161,13 +185,48 @@ export class GemFactory {
     }
   }
 
-  private playVaporizeSfx(pos: vec3): void {
-    const obj = global.scene.createSceneObject("VaporizeSfx");
+  /** Flat disk-ring burst at the gem's base — magical placement dust. */
+  private spawnPlaceBurst(origin: vec3, normal: vec3): void {
+    if (this.puffMeshA === null) this.puffMeshA = buildDiscMesh(1.3, RGB_LIGHT_VIOLET);
+    if (this.puffMeshB === null) this.puffMeshB = buildDiscMesh(1.1, RGB_TEAL);
+    const n = normal.normalize();
+    let t1 = n.cross(vec3.up());
+    if (t1.length < 0.05) t1 = n.cross(vec3.right());
+    t1 = t1.normalize();
+    const t2 = n.cross(t1).normalize();
+    for (let i = 0; i < PLACE_PARTICLES; i++) {
+      const obj = global.scene.createSceneObject("PlacePuff");
+      obj.setParent(this.parent);
+      obj.getTransform().setWorldPosition(origin);
+      obj.getTransform().setLocalRotation(
+        quat.angleAxis(Math.random() * Math.PI * 2, vec3.up())
+          .multiply(quat.angleAxis(Math.random() * Math.PI, vec3.right())));
+      const rmv = obj.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+      rmv.mesh = i % 2 === 0 ? this.puffMeshA : this.puffMeshB;
+      rmv.mainMaterial = this.burstMat;
+
+      // Even ring in the surface plane + slight lift along the normal.
+      const a = (i / PLACE_PARTICLES) * Math.PI * 2 + Math.random() * 0.5;
+      const dir = t1.uniformScale(Math.cos(a)).add(t2.uniformScale(Math.sin(a)));
+      const speed = 30 + Math.random() * 16;
+      this.particles.push({
+        obj: obj,
+        vel: dir.uniformScale(speed).add(n.uniformScale(9 + Math.random() * 7)),
+        age: 0,
+        life: 0.35 + Math.random() * 0.3,
+        size: 0.5 + Math.random() * 0.45,
+      });
+    }
+  }
+
+  private playOneShot(track: AudioTrackAsset, pos: vec3, volume: number): void {
+    const obj = global.scene.createSceneObject("OneShotSfx");
     obj.setParent(this.parent);
     obj.getTransform().setWorldPosition(pos);
     const ac = obj.createComponent("Component.AudioComponent") as AudioComponent;
-    ac.audioTrack = VAPORIZE_SFX;
+    ac.audioTrack = track;
     ac.playbackMode = Audio.PlaybackMode.LowLatency;   // user-input feedback (specs-audio)
+    ac.volume = volume;
     ac.play(1);
     this.cleanup.push({ obj: obj, ttl: 3.5 });   // outlives the reverb tail
   }
@@ -212,6 +271,27 @@ export class GemFactory {
       // Bob = translation on the wrapper so the collider follows.
       const bob = Math.sin((this.elapsed * Math.PI * 2) / 4 + g.phase) * 2.2 * g.scale;
       g.wrapper.getTransform().setWorldPosition(new vec3(g.base.x, g.base.y + bob, g.base.z));
+    }
+
+    // Arriving gems: grow in with a punch-overshoot, then settle to rest.
+    for (let i = this.arriving.length - 1; i >= 0; i--) {
+      const a = this.arriving[i];
+      a.age += dt;
+      if (isNull(a.visual)) { this.arriving.splice(i, 1); continue; }
+      if (a.age >= ARRIVE_PUNCH_S + ARRIVE_SETTLE_S) {
+        a.visual.getTransform().setLocalScale(vec3.one());
+        this.arriving.splice(i, 1);
+        continue;
+      }
+      let s: number;
+      if (a.age < ARRIVE_PUNCH_S) {
+        const t = a.age / ARRIVE_PUNCH_S;
+        s = ARRIVE_PUNCH_SCALE * (1 - (1 - t) * (1 - t) * (1 - t));   // ease-out grow
+      } else {
+        const t = (a.age - ARRIVE_PUNCH_S) / ARRIVE_SETTLE_S;
+        s = ARRIVE_PUNCH_SCALE - (ARRIVE_PUNCH_SCALE - 1) * t * t;    // ease-in settle
+      }
+      a.visual.getTransform().setLocalScale(new vec3(s, s, s));
     }
 
     // Dying gems: punch out, then shrink to nothing with a spin-up and rise.
