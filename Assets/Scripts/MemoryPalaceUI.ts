@@ -39,6 +39,7 @@ import Event, {PublicApi} from "SpectaclesInteractionKit.lspkg/Utils/Event"
 const imageMaterial = requireAsset("../Materials/ImageMaterial.mat") as Material
 const LOGO_TEX = requireAsset("../Textures/logo_keystone.png") as Texture
 const ICON_CREATE = requireAsset("../Icons/photo_camera.png") as Texture
+const ICON_EDIT = requireAsset("../Icons/edit.png") as Texture
 const ICON_EXPLORE = requireAsset("../Icons/explore.png") as Texture
 const ICON_TRAIN = requireAsset("../Icons/psychology.png") as Texture
 const ICON_MIC = requireAsset("../Icons/mic.png") as Texture
@@ -436,7 +437,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     })
 
     this.addModalButton(col, "Create", ICON_CREATE, () => this._onCreate.invoke())
-    this.addModalButton(col, "Edit", null, () => this._onEditRequested.invoke())
+    this.addModalButton(col, "Edit", ICON_EDIT, () => this._onEditRequested.invoke())
     this.addModalButton(col, "Explore", ICON_EXPLORE, () => {
       this.showComingSoon("Explore")
       this._onExplore.invoke()

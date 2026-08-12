@@ -1,5 +1,28 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12 — Verification completed + Edit icon
+
+**Prompt:** "restarted. BTW the edit button needs an icon"
+
+**Increment:** Material Symbols "edit" (pencil) imported via IconSelector and
+wired to the Edit button (was text-only — no suitable icon was on disk during
+the Wednesday build). MCP lane recovered after the Lens Studio restart without
+a new agent session.
+
+**The two pending Wednesday legs verified via the real UI path** (PreviewInteractTool
+synthetic hand + TapEvent, zero instrumentation): Create → `created "Palace 1"` →
+session → swirl pinch → click-place → `saved … positions: (93.1, -136.7, -492.5)` →
+**Done chip → save → modal returns** → Edit → picker → pick "Palace 1" →
+`loaded "Palace 1" — 1 memories` → **gem respawned at (93.10, -136.88, -492.5)**
+(sub-cm match; delta = idle bob). Wednesday milestone fully verified end-to-end.
+
+**New tool lore:** (1) the hidden follow-panel leaves an InteractionPlane
+collider that `obstructed`-blocks uniqueId-targeted pinches on things behind
+it — coordinate-targeted pinches bypass validation and work; (2) the follow
+panel repositions when re-shown, so button coordinates must be re-queried
+after every modal show/hide transition.
+
+
 Agentic build log for the CLAD Summer Hackathon (Week 1: "Organize").
 Each entry: the prompt/brief given to the agent, and the working increment it produced.
 
