@@ -102,17 +102,19 @@ export class ReticleController {
       this.point = this.lastHit.position.add(n.uniformScale(SURFACE_LIFT));
       this.normal = n;
       t.setWorldPosition(this.point);
-      // Ring mesh faces +Z: aim -Z along -normal so +Z rides the normal —
-      // ring lies flat on floors/tables, flush on walls.
+      // LS quat.lookAt aims +Z along its arg (vec3.forward() is +Z).
+      // Ring mesh faces +Z → aim +Z along the normal: flat on floors/tables,
+      // flush on walls. (Visually identical either way — materials are
+      // twoSided — but one-sided children parented here must not be lied to.)
       const upRef = Math.abs(n.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
-      t.setWorldRotation(quat.lookAt(n.uniformScale(-1), upRef));
+      t.setWorldRotation(quat.lookAt(n, upRef));
     } else {
       this.point = gazePoint;
       this.normal = null;
       t.setWorldPosition(this.point);
-      // Face the user: mesh normal is +Z, so aim -Z along the view direction.
-      const viewDir = this.point.sub(camPos).normalize();
-      t.setWorldRotation(quat.lookAt(viewDir, vec3.up()));
+      // Face the user: aim +Z (mesh front) back at the camera.
+      const toCam = camPos.sub(this.point).normalize();
+      t.setWorldRotation(quat.lookAt(toCam, vec3.up()));
     }
 
     // Dash orbit; the brand tilt only applies in float mode — on a surface the

@@ -208,8 +208,9 @@ export class MemoryPalace extends BaseScriptComponent {
     right = right.normalize();
     const viewUp = right.cross(viewDir).normalize();
     const pos = fwdPoint.sub(viewUp.uniformScale(CARD_DROP));
-    // Panel front is +Z: aim -Z along the view direction (roll-free via viewUp).
-    const rot = quat.lookAt(viewDir, viewUp);
+    // LS API: vec3.forward() is +Z, so quat.lookAt aims +Z along its arg.
+    // Panel front is +Z → aim it AT the camera (roll-free via viewUp).
+    const rot = quat.lookAt(viewDir.uniformScale(-1), viewUp);
     return { pos: pos, rot: rot };
   }
 

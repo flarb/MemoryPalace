@@ -139,3 +139,25 @@ finish" in editor. Verified across three driven capture cycles (zero errors);
 the card's final frozen pose confirmed ~90 cm out, below gaze line, composite
 facing rotation — the screenshot race lost to a 5-second state, the runtime
 query didn't.
+
+## Tue Aug 11 (later) — HOTFIX: invisible listening card (the vec3.forward trap)
+
+**Prompt:** "When I capture I don't see any interface at all."
+
+**Root cause (StudioLib.d.ts, not folklore):** Lens Studio's API defines
+`vec3.forward()` = **(0, 0, +1)** and `quat.lookAt(forward, up)` aims **+Z**
+along its argument — while scene-space convention says "-Z is forward". The
+card's new lookAt rotation aimed +Z along the view direction, i.e. the panel
+faced AWAY from the user. One-sided BackPlate + one-sided Text = rendered
+perfectly, invisibly, backwards. The reticle code's "-Z is forward" comment
+had never been falsified because every reticle material is twoSided (visible
+from both sides) — the transcript card was the first one-sided surface to
+trust it.
+
+**Fix:** aim +Z AT the camera (`lookAt(viewDir.uniformScale(-1), viewUp)`);
+corrected the reticle's two lookAt calls + comments to the proven convention
+(visually identical for twoSided meshes, but Friday's one-sided Snap3D hatch
+meshes would have tripped on the lie). Cycle re-verified clean end-to-end.
+Lesson for the log: in LS, API "forward" (+Z) and scene "forward" (-Z) are
+opposite — never trust a facing comment that was only ever validated by
+twoSided materials.
