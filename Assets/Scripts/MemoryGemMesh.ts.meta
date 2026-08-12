@@ -1,0 +1,52 @@
+- !<AssetImportMetadata/b9ecf21a-f59f-4562-b5e5-cb8cdf43fbd2>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 17b06fc7-c5e3-4795-9fb6-e3cc1660bded
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 17b06fc7-c5e3-4795-9fb6-e3cc1660bded
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 8589c8bd-e353-4cdc-ab4d-abe98f62108e
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/8589c8bd-e353-4cdc-ab4d-abe98f62108e>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 7c906292-235a-4f16-aec8-9c9b037e0caa
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    gemScale: false
+    idleMotion: false
+    material: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - material: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      gemScale: !<float> 1.000000
+      idleMotion: true
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input Asset.Material material
+    - // @input float gemScale = 1
+    - // @input bool idleMotion = true

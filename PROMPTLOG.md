@@ -1,31 +1,40 @@
 # CLAD Prompt Log — MemoryPalace
 
-Chronological log of the AI-assisted (CLAD) workflow building this entry. Agent: Claude Code (Fable 5) + Lens Studio MCP toolkit. Appended after each working increment.
+Agentic build log for the CLAD Summer Hackathon (Week 1: "Organize").
+Each entry: the prompt/brief given to the agent, and the working increment it produced.
 
-## Phase 0 — Ideation (Tue Aug 11)
+## Tue Aug 11 — Scene bootstrap + start modal + sigil v0 + wizard v0
 
-- **Prompt:** *"I'm competing in this hackathon… Give me some ideas for the week 1 theme 'organize'"*
-  → Agent fetched the hackathon brief (themes, judging weights, submission requirements), generated idea slate. Memory-palace concept selected.
-- **Prompt:** *"how do memory palaces work in real life and how can we adapt and improve it for SPECS?"*
-  → Agent researched method-of-loci cognitive science (Krokos et al. 2018 HMD recall study; VR MoL feasibility studies), identified the core design tension (spatial sticky notes vs. actual memory training → "training wheels that fade"), proposed the encode/walk/recall loop.
+**Prompt:** "ok. let's go! Build it!" — build the MemoryPalace experience per
+DESIGN.md, Tuesday milestone scope (Branding/STYLE.md as visual north star;
+frame-draw stubbed as gaze reticle; SFX/persistence/WorldQuery deferred).
 
-## Phase 1 — Design (Tue Aug 11)
+**Sub-run:** `mesh-builder-scripting` fork built `MemoryGemMesh.ts` — procedural
+kite-cut faceted gem, brand-gradient vertex colors, verified in preview.
 
-- **Prompt:** *"ok let's design and plan this. Check out this design that Codex made, let's incorporate the best ideas…"* + user's multimedia-anchor concept (audio + 3D + 2D snap per memory, persistent anchors, outdoor)
-  → Agent synthesized both designs into DESIGN.md: Capture pillar (spatial memory recorder) + Train pillar (method of loci), added LLM mnemonic transformer, blurred-snapshot hint tier, spatial-audio whisper, decay visualization, journeys/spatial inbox.
-- **Prompt:** capture-flow UX questions (start modal? hand UI? gem placeholder? animation for abstract concepts? Bitmoji?)
-  → Agent verified against LS knowledge base: Snap3D = static GLB (→ procedural animation recipes tagged by LLM), Bitmoji 3D confirmed on Specs (Mixamo-clip animation via Animation Player). Designed the 4-step capture wizard (Frame → Speak → Place → Conjure) with gem-hatch pattern.
-- **Prompt:** palm-UI collision with Snap OS system button
-  → Agent verified "Space on the Hand" + hand-menu guidelines; designed the Sigil (back-of-hand, non-dominant, ethereal swirl + aura loop, audio ducking during recording).
-- **Prompt:** *"We should also have sound design on other events"*
-  → Full event→SFX map: single pentatonic palette, hierarchy, spatial wayfinding pings, mastery melody, concurrency caps.
+**Increment produced (agent: specs-experience-builder, Claude Code):**
+- Specs project bootstrap: Spectacles target, Perspective camera +
+  DeviceTracking (World), stereo Interactive preview, SIK v2.0.0 + UIKit
+  v2.0.0 installed, SIK prefab at root.
+- Branding pipeline: `Branding/logo-memorypalace-transparent.svg` graphic
+  elements rasterized via resvg (SVG `<text>` doesn't survive conversion →
+  wordmark rendered as UIKit text per DESIGN.md fallback);
+  Montserrat Light/Medium imported via Editor API.
+- `MemoryPalaceUI.ts` (SpectaclesUIKit): branded start modal (Keystone logo,
+  tracked wordmark, Capture/Explore/Train, hand hint, coming-soon line),
+  transcript card (mic + streaming body + "pinch to finish"), billboarded
+  "New Memory" sigil label. Event-bus API to the main script.
+- Sigil v0: counter-rotating additive violet/teal ribbon swirl + glow disc on
+  the back of the LEFT hand (SIK hand keypoints, viewer-facing normal flip),
+  Interactable on unit-scale wrapper; editor park position for mouse testing.
+- Capture wizard v0 (`MemoryPalace.ts` state machine): sigil tap / Capture →
+  gaze reticle (dashed teal orbit ring, -12° tilt; 2.5 s auto-confirm in
+  editor, pinch on device) → ASR Module streaming (silence auto-stop 1.2 s,
+  pinch stop; canned "buy milk for Thursday" preview fallback) → faceted gem
+  drops free-floating at the anchor (in-session).
+- Verified: clean compile, zero runtime errors, wizard driven end-to-end in
+  preview (logs show MODAL→AIMING→LISTENING→captured), screenshots reviewed.
 
-## Phase 2 — Branding (Tue Aug 11)
-
-- **Prompt:** *"We should also design a logo… Can you generate logos or should I provide one?"*
-  → Agent authored three vector concepts (Keystone / Sigil / Amber). User selected **Keystone**; production variants generated; Keystone locked as the app-wide visual north star (Branding/STYLE.md: palette tokens, AR-legibility typography rules, orbit-ring focus indicator, semantic amber).
-
-## Phase 3 — Build (Tue Aug 11 → )
-
-- **Prompt:** *"ok. let's go! Build it!"*
-  → Router gate (project/MCP/sign-in), git init + design-phase commit, spawn specs-experience-builder: scene bootstrap, branded start modal, Sigil v0, capture wizard skeleton.
+**Fixes along the way:** FlexLayout `addItems` pre-init throw → deferred via
+`onInitialized` (ReplayEvent, duplicates ignored); `uiHud` @input wired by
+SceneObject ref read back null → re-wired to the ScriptComponent UUID.

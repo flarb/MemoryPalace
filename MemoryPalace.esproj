@@ -15,6 +15,7 @@ metaInfo:
     []
   lensName: Memory Palace
   lensDescriptors:
+    - AI_MUTATED
     - GEN_AI_ICON
   lensApplicableContext:
     - live_camera
