@@ -161,3 +161,6 @@ meshes would have tripped on the lie). Cycle re-verified clean end-to-end.
 Lesson for the log: in LS, API "forward" (+Z) and scene "forward" (-Z) are
 opposite — never trust a facing comment that was only ever validated by
 twoSided materials.
+
+**Tune (user eyes-on):** card clipped at the FOV bottom → CARD_DROP 30 → 12 cm
+(~8° below gaze). User-confirmed visible and readable otherwise.

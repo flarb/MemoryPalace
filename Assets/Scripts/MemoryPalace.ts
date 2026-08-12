@@ -29,7 +29,7 @@ const AIM_DISTANCE = 150;                       // cm along gaze (reticle + gem)
 const PINCH_DEBOUNCE_S = 0.4;
 const GEM_SURFACE_OFFSET = 5;                   // cm along the hit normal (half gem + clearance)
 const CARD_DISTANCE = 90;                       // cm ahead for the listening card
-const CARD_DROP = 30;                           // cm below gaze in the view plane (~18° — lower third)
+const CARD_DROP = 12;                           // cm below gaze in the view plane (~8° — lower-mid, clear of FOV bottom)
 const CARD_LERP = 8;                            // soft-follow responsiveness
 
 type WizardState = "MODAL" | "IDLE" | "AIMING" | "LISTENING";
