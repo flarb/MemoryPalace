@@ -43,6 +43,7 @@ const ICON_LOAD = requireAsset("../Icons/folder_open.png") as Texture
 const ICON_EXPLORE = requireAsset("../Icons/explore.png") as Texture
 const ICON_TRAIN = requireAsset("../Icons/psychology.png") as Texture
 const ICON_MIC = requireAsset("../Icons/mic.png") as Texture
+const ICON_SPEAK = requireAsset("../Icons/volume_up.png") as Texture
 const FONT_LIGHT = requireAsset("../Fonts/Montserrat-Light.ttf") as Font
 const FONT_MEDIUM = requireAsset("../Fonts/Montserrat-Medium.ttf") as Font
 
@@ -123,6 +124,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   get onCardEnhanceImage(): PublicApi<void> { return this._onCardEnhanceImage.publicApi() }
   private _onCardEnhanceRemove = new Event<void>()
   get onCardEnhanceRemove(): PublicApi<void> { return this._onCardEnhanceRemove.publicApi() }
+  private _onGazeSpeak = new Event<void>()
+  get onGazeSpeak(): PublicApi<void> { return this._onGazeSpeak.publicApi() }
 
   // ── Panel roots + state ────────────────────────────────────────────────────
   private modalRoot!: SceneObject
@@ -800,10 +803,23 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     flex.onLayoutComplete.add((r) => {
       plate.size = new vec2(r.containerWidth, r.containerHeight)
     })
-    this.flexChild(col, {w: 14, h: 3.4}, (c) => {
-      this.gazeLabelText = this.textIn(c, "", "Body", {
-        font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT,
-        wrap: {w: 14, h: 3.4}, distanceCm: 150,
+    // Speaker button + the memory's words, one row.
+    this.flexChild(col, {w: 17, h: 3.6}, (c) => {
+      const row = this.flexRow(c, 17, 3.6, {
+        justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.6,
+      })
+      this.flexChild(row, {w: 2.8, h: 2.8}, (host) => {
+        const btn = host.createComponent(Button.getTypeName()) as Button
+        btn.size = new vec3(2.8, 2.8, 1)   // BEFORE init
+        const face = this.obj(host, "Face", new vec3(0, 0, BUTTON_LABEL_Z))
+        this.imageIn(face, ICON_SPEAK, 1.8, 1.8, COL_TEAL)
+        btn.onTriggerUp.add(() => this._onGazeSpeak.invoke())
+      })
+      this.flexChild(row, {w: 13, h: 3.4}, (c2) => {
+        this.gazeLabelText = this.textIn(c2, "", "Body", {
+          font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT,
+          wrap: {w: 13, h: 3.4}, distanceCm: 150,
+        })
       })
     })
   }

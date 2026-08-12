@@ -14,6 +14,8 @@ import { Snap3D } from "RemoteServiceGateway.lspkg/HostedSnap/Snap3D";
 import { Snap3DTypes } from "RemoteServiceGateway.lspkg/HostedSnap/Snap3DTypes";
 import { Imagen } from "RemoteServiceGateway.lspkg/HostedExternal/Imagen";
 import { GoogleGenAITypes } from "RemoteServiceGateway.lspkg/HostedExternal/GoogleGenAITypes";
+import { OpenAI } from "RemoteServiceGateway.lspkg/HostedExternal/OpenAI";
+import { OpenAITypes } from "RemoteServiceGateway.lspkg/HostedExternal/OpenAITypes";
 
 export type EnhanceKind = "mesh" | "image";
 
@@ -29,8 +31,34 @@ export function buildEnhancePrompt(kind: EnhanceKind, transcript: string): strin
 
 export class EnhanceService {
   private inFlight: { [memoryId: string]: boolean } = {};
+  private speechCache: { [memoryId: string]: AudioTrackAsset } = {};
+  private speechBusy: { [memoryId: string]: boolean } = {};
 
   isBusy(memoryId: string): boolean { return this.inFlight[memoryId] === true; }
+
+  /** OpenAI TTS of the memory text — cached per memory, soft arcana voice. */
+  generateSpeech(memoryId: string, text: string): Promise<AudioTrackAsset> {
+    if (this.speechCache[memoryId] !== undefined) {
+      return Promise.resolve(this.speechCache[memoryId]);
+    }
+    if (this.speechBusy[memoryId]) return Promise.reject("Speech already generating");
+    this.speechBusy[memoryId] = true;
+    const request: OpenAITypes.Speech.Request = {
+      model: "tts-1",
+      input: text,
+      voice: "shimmer",
+    };
+    return OpenAI.speech(request)
+      .then((track) => {
+        this.speechBusy[memoryId] = false;
+        this.speechCache[memoryId] = track;
+        return track;
+      })
+      .catch((e) => {
+        this.speechBusy[memoryId] = false;
+        throw "TTS failed: " + e;
+      });
+  }
 
   generateImage(memoryId: string, prompt: string): Promise<Texture> {
     if (this.inFlight[memoryId]) return Promise.reject("Already conjuring this memory");

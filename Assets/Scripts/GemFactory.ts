@@ -459,6 +459,11 @@ export class GemFactory {
     }
   }
 
+  /** Play any track positionally (TTS "speak this memory", etc.). */
+  playTrackAt(track: AudioTrackAsset, pos: vec3, volume: number): void {
+    this.playOneShot(track, pos, volume);
+  }
+
   private playOneShot(track: AudioTrackAsset, pos: vec3, volume: number): void {
     const obj = global.scene.createSceneObject("OneShotSfx");
     obj.setParent(this.parent);
@@ -468,7 +473,7 @@ export class GemFactory {
     ac.playbackMode = Audio.PlaybackMode.LowLatency;   // user-input feedback (specs-audio)
     ac.volume = volume;
     ac.play(1);
-    this.cleanup.push({ obj: obj, ttl: 3.5 });   // outlives the reverb tail
+    this.cleanup.push({ obj: obj, ttl: 12 });   // outlives reverb tails and TTS clips
   }
 
   /** Destroy one gem by memory id (delete flow). Returns whether it existed. */

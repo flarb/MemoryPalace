@@ -1,5 +1,18 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 13 — The palace speaks (TTS on the gaze label)
+
+**Prompt:** "put like a 'speaker' button next to the text label on a memory.
+If you click on that, it will speak the text in the label?"
+
+**Increment:** the gaze label gains a teal volume_up icon button beside the
+text. Tap → `OpenAI.speech({model: "tts-1", voice: "shimmer"})` via RSG
+resolves directly to an AudioTrackAsset (no decode plumbing needed) → played
+positionally at the gem (one-shot host TTL raised to 12 s for speech length).
+Per-memory TTS cache so repeat taps are instant and free. Voice "shimmer" —
+the closest to the arcana palette. Compile-clean; the click itself is
+user-verified (synthetic hand retired for the night).
+
 ## Wed Aug 12 — Enhancement management, tinted glow, conjure ring, gaze reveal
 
 **Prompts:** "option to remove the enhancement… make the color of the light

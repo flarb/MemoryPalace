@@ -119,6 +119,7 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onCardEnhanceMesh.add(() => this.onEnhanceSelected("mesh"));
       this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
       this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
+      this.uiHud.onGazeSpeak.add(() => this.speakGazedMemory());
       // Explore/Train: the UI shows its own coming-soon hint (Wednesday scope).
 
       // Sigil cluster (SIK subscriptions bind in OnStart).
@@ -532,6 +533,27 @@ export class MemoryPalace extends BaseScriptComponent {
       this.gems.setGazeRing(bestId);
       if (this.gazeAudio !== null) this.gazeAudio.play(-1);   // faint loop while dwelling
     }
+  }
+
+  /** Speaker button on the gaze label: the palace reads the memory aloud. */
+  private speakGazedMemory(): void {
+    if (this.palace === null || this.gazeTargetId === null || !this.gazeRevealed) return;
+    const id = this.gazeTargetId;
+    let transcript = "";
+    for (const m of this.palace.memories) {
+      if (m.id === id) { transcript = m.transcript; break; }
+    }
+    if (transcript.length === 0) return;
+    print("MemoryPalace: speaking \"" + transcript + "\"");
+    this.enhancer.generateSpeech(id, transcript)
+      .then((track) => {
+        const p = this.gems.basePosition(id);
+        this.gems.playTrackAt(track, p !== null ? p : this.camera.getWorldPosition(), 0.85);
+      })
+      .catch((msg) => {
+        print("MemoryPalace: speak failed — " + msg);
+        this.flash("Couldn't speak that — try again", this.gems.basePosition(id));
+      });
   }
 
   private clearGaze(): void {
