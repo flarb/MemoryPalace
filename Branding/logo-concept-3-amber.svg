@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800">
+  <defs>
+    <radialGradient id="bg3" cx="50%" cy="40%" r="78%">
+      <stop offset="0%" stop-color="#251345"/>
+      <stop offset="70%" stop-color="#160c2d"/>
+      <stop offset="100%" stop-color="#0f0820"/>
+    </radialGradient>
+    <radialGradient id="glow3" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffb84d" stop-opacity="0.42"/>
+      <stop offset="60%" stop-color="#ff9a3d" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#ff9a3d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#ffd08a"/>
+      <stop offset="55%" stop-color="#ffb054"/>
+      <stop offset="100%" stop-color="#e0762b"/>
+    </linearGradient>
+    <linearGradient id="amberText" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffcf87"/>
+      <stop offset="100%" stop-color="#ff9a3d"/>
+    </linearGradient>
+    <path id="spark3" d="M0,-9 L2.2,-2.2 L9,0 L2.2,2.2 L0,9 L-2.2,2.2 L-9,0 L-2.2,-2.2 Z"/>
+  </defs>
+
+  <rect x="8" y="8" width="784" height="784" rx="44" fill="url(#bg3)"/>
+
+  <!-- faint palace arch behind -->
+  <path d="M250,520 V220 A150,150 0 0 1 550,220 V520" fill="none" stroke="#c9b8ff" stroke-opacity="0.10" stroke-width="3"/>
+
+  <!-- starfield -->
+  <g fill="#cfc4ff">
+    <circle cx="140" cy="150" r="1.5" opacity="0.45"/>
+    <circle cx="660" cy="120" r="1.2" opacity="0.4"/>
+    <circle cx="700" cy="360" r="1.7" opacity="0.3"/>
+    <circle cx="100" cy="430" r="1.3" opacity="0.35"/>
+    <circle cx="620" cy="560" r="1.4" opacity="0.3"/>
+    <circle cx="200" cy="600" r="1.2" opacity="0.3"/>
+  </g>
+
+  <!-- amber glow -->
+  <circle cx="400" cy="345" r="185" fill="url(#glow3)"/>
+
+  <!-- crystal -->
+  <g>
+    <polygon points="400,175 478,262 462,428 400,500 338,428 322,262" fill="url(#amber)" opacity="0.94"/>
+    <polygon points="400,175 478,262 400,262" fill="#ffffff" opacity="0.22"/>
+    <polygon points="400,175 322,262 400,262" fill="#ffffff" opacity="0.10"/>
+    <polygon points="338,428 400,500 400,428" fill="#5c2c08" opacity="0.18"/>
+    <polygon points="462,428 400,500 400,428" fill="#5c2c08" opacity="0.10"/>
+    <polygon points="322,262 338,428 358,345" fill="#ffffff" opacity="0.08"/>
+    <polygon points="478,262 462,428 442,345" fill="#5c2c08" opacity="0.08"/>
+    <polygon points="400,175 478,262 462,428 400,500 338,428 322,262" fill="none" stroke="#ffe3b3" stroke-opacity="0.55" stroke-width="1.6"/>
+  </g>
+
+  <!-- embedded snapshot (the memory in amber) -->
+  <g transform="rotate(-6 400 345)">
+    <rect x="352" y="308" width="99" height="79" rx="9" fill="#7a3d10" opacity="0.45"/>
+    <rect x="349" y="304" width="99" height="79" rx="9" fill="#fff8ec" opacity="0.96"/>
+    <circle cx="374" cy="330" r="7" fill="#ffb84d"/>
+    <path d="M357,368 L382,340 L396,355 L410,337 L440,368 Z" fill="#e0762b"/>
+    <rect x="349" y="304" width="99" height="79" rx="9" fill="none" stroke="#e8d9bd" stroke-width="1.4"/>
+  </g>
+
+  <!-- rising motes -->
+  <g fill="#ffcf87">
+    <circle cx="320" cy="225" r="2.2" opacity="0.55"/>
+    <circle cx="472" cy="200" r="1.8" opacity="0.5"/>
+    <circle cx="510" cy="300" r="2.0" opacity="0.4"/>
+    <circle cx="290" cy="330" r="1.6" opacity="0.45"/>
+    <circle cx="430" cy="150" r="1.7" opacity="0.4"/>
+    <circle cx="360" cy="540" r="2.0" opacity="0.3"/>
+    <circle cx="524" cy="452" r="1.8" opacity="0.35"/>
+  </g>
+  <use href="#spark3" transform="translate(486,224) scale(0.7)" fill="#ffe9c4" opacity="0.9"/>
+  <use href="#spark3" transform="translate(316,470) scale(0.55)" fill="#ffd9a1" opacity="0.75"/>
+
+  <!-- wordmark -->
+  <text x="400" y="606" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="43" font-weight="300" letter-spacing="12" fill="#ede9ff">MEMORY PALACE</text>
+  <g stroke="#c9a06a" stroke-opacity="0.45" stroke-width="1.4">
+    <line x1="292" y1="646" x2="362" y2="646"/>
+    <line x1="438" y1="646" x2="508" y2="646"/>
+  </g>
+  <text x="400" y="655" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="24" font-weight="400" letter-spacing="9" fill="url(#amberText)">AR</text>
+
+  <text x="36" y="770" font-family="'Segoe UI', Arial, sans-serif" font-size="15" letter-spacing="2" fill="#8f80c9" opacity="0.5">CONCEPT 3 · AMBER</text>
+</svg>

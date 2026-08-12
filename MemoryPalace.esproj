@@ -1,0 +1,53 @@
+studioVersion:
+  major: 5
+  minor: 23
+  patch: 1
+  build: 26080420
+  type: Public
+coreVersion: 372
+clientVersion: 14.16
+updateCheckpoint: 102
+sceneId: 0a1ccb1a-fe88-4fbb-9883-e3af3c75fd99
+metaInfo:
+  hints:
+    []
+  tags:
+    []
+  lensName: Memory Palace
+  lensDescriptors:
+    - GEN_AI_ICON
+  lensApplicableContext:
+    - live_camera
+    - reply_camera
+    - video_chat
+  lensApplicability:
+    - Front
+    - Back
+  lensClientCompatibilities:
+    - Spectacles
+  platformBundlesEnabled: false
+  iconHash: ce5d6c69840b8bf8bf1fccbba8db3c3e
+  videoPreviewHash: ""
+  fromTemplateName: Default
+  fromTemplateUrl: Lens Studio 5.23.1.26080420
+  activationCamera: Front
+  sourceMapEnabled: false
+  shaderCacheInvalidationEnabled: false
+  usingMinClientVersions: false
+  androidMinClientVersion:
+    major: 0
+    minor: 0
+    patch: 0
+    build: 0
+  iOSMinClientVersion:
+    major: 0
+    minor: 0
+    patch: 0
+    build: 0
+  documentId: 36428cab-4b4f-4e5c-9bdd-df80fe3dbdff
+  originalDocumentId: f3d524c5-ac07-44a7-b03a-e07d591396ec
+  packageId: com.example.memorypalace
+  packageVersion: 0.0.1
+  spkPrivilegeLevel: Generic
+  gluboEnabled: false
+targetPlatform: Spectacles
