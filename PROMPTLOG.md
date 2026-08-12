@@ -89,3 +89,16 @@ script's OnStart can race the frame's init. "FLARB LLC" caption added
 bottom-right (flexRow justify-End). Compiled first-try; verified by yawing the
 preview camera 120° with MovePreviewCamera — panel chased into the new view,
 billboarded, credit intact.
+
+## Tue Aug 11 (later) — Vertical gaze-follow + copy casing
+
+**Prompt:** "the panel should follow your gaze as you look up and down as well.
+Make sure you capitalize the body text properly."
+
+**Increment:** read the UIKit Frame source (`Frame.ts` + `modules/SmoothFollow.ts`)
+and found the built-in: `frame.useTiltMode = true` switches the follow to
+gaze-tracking once camera pitch passes thresholds (25° up / 35° down defaults) —
+one line, no hand-rolled follower. Sentence-case sweep across every user-facing
+string (hint, status, toasts, card captions) and a new STYLE.md rule: UI copy is
+sentence case; all-caps is display-only. Verified with the preview camera pitched
+~89° at the ceiling — panel centered in view, copy capitalized.

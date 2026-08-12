@@ -140,7 +140,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
   showComingSoon(mode: string): void {
     if (this.comingSoonText) {
-      this.comingSoonText.text = mode + " — coming soon"
+      this.comingSoonText.text = mode + " — Coming soon"
       this.comingSoonClear.reset(2.2)
     }
   }
@@ -240,6 +240,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       frame.showFollowButton = false  // always-follow, no toggle
       frame.setUseFollow(true)
       frame.setFollowing(true)
+      frame.useTiltMode = true   // gaze-tracking past pitch thresholds — follows look up/down too
 
       const host = frame.contentTransform.getSceneObject()
       const content = this.obj(host, "Content", new vec3(0, 0, 0.6))
@@ -291,7 +292,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
     // First-run hint (Snap hand-menu guideline: users won't find hand UI unaided).
     this.flexChild(col, {w: 22, h: 1.5}, (c) => {
-      this.hintText = this.textIn(c, "glance at your left hand to capture", "Caption", {
+      this.hintText = this.textIn(c, "Glance at your left hand to capture", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
       })
     })
@@ -378,7 +379,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     })
 
     this.flexChild(col, {w: 21, h: 1.3}, (c) => {
-      this.textIn(c, "pinch to finish", "Caption", {
+      this.textIn(c, "Pinch to finish", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
       })
     })
@@ -426,7 +427,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       plate.size = new vec2(r.containerWidth, r.containerHeight)
     })
     this.flexChild(col, {w: 11, h: 1.4}, (c) => {
-      this.statusText = this.textIn(c, "hold steady…", "Caption", {
+      this.statusText = this.textIn(c, "Hold steady…", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEAL,
       })
     })

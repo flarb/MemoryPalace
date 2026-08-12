@@ -37,6 +37,7 @@
 - **The rule-line divider motif** (from the "— AR —" lockup): small tracked uppercase label centered between two thin rules — the standard section header on panels.
 - **Body** (cards, transcripts): Regular 400, sentence case.
 - **Caption/meta** (dates, counts): Regular 400, muted lavender.
+- **UI copy is sentence case** — every user-facing string starts with a capital ("Pinch to finish", "Placing memory in 3…"). The tracked-out all-caps treatment is reserved for display type (wordmark, mode titles).
 
 **AR legibility rules (non-negotiable):**
 1. Functional text is weight ≥ 400; Light 300 only for large display type.

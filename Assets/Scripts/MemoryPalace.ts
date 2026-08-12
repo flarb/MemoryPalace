@@ -78,7 +78,7 @@ export class MemoryPalace extends BaseScriptComponent {
       // its parked stand-in) exists only on device.
       if (this.editorMode) {
         this.sigil.setActive(false);
-        this.uiHud.setHintText("press Capture, then hold the view steady");
+        this.uiHud.setHintText("Press Capture, then hold the view steady");
       }
 
       // Raw pinch (either hand) confirms aim / stops listening on device.
@@ -141,7 +141,7 @@ export class MemoryPalace extends BaseScriptComponent {
       onPartial: (t) => this.uiHud.setTranscript(t),
       onFinal: (t) => this.finishCapture(t),
       onError: (msg) => {
-        this.uiHud.setListeningState(msg + " — try again");
+        this.uiHud.setListeningState(msg + " — Try again");
         this.finishCapture("");
       },
     });
@@ -167,8 +167,8 @@ export class MemoryPalace extends BaseScriptComponent {
       // with a visible confirmation so the flow never reads as "nothing happened".
       this.uiHud.showModal();
       this.uiHud.showToast(transcript.length > 0
-        ? "✓ memory placed — " + this.memories.length + " total"
-        : "capture cancelled");
+        ? "✓ Memory placed — " + this.memories.length + " total"
+        : "Capture cancelled");
       this.setState("MODAL");
     } else {
       this.sigil.setActive(true);
@@ -224,12 +224,12 @@ export class MemoryPalace extends BaseScriptComponent {
       if (this.editorMode) {
         this.aimElapsed += dt;
         const remain = Math.ceil(EDITOR_AIM_AUTOCONFIRM_S - this.aimElapsed);
-        this.uiHud.setStatusText("placing memory in " + Math.max(1, remain) + "…");
+        this.uiHud.setStatusText("Placing memory in " + Math.max(1, remain) + "…");
         if (this.aimElapsed >= EDITOR_AIM_AUTOCONFIRM_S) {
           this.confirmPlacement();
         }
       } else {
-        this.uiHud.setStatusText("pinch to place");
+        this.uiHud.setStatusText("Pinch to place");
       }
     }
   }
