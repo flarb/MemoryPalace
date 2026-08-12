@@ -12,6 +12,11 @@
  *   LISTENING ASR streams onto the transcript card; auto-stop on ~1.2 s
  *             silence or pinch/click; canned transcript in the editor.
  *   → gem drops at the anchor, memory recorded, auto-saved, back to SESSION.
+ *   EXPLORE   view-only walk of the active palace (last created/loaded):
+ *             distant anchors glint and resolve on approach; ONE proximity
+ *             whisper (per-memory TTS) at a time; select → read-only card +
+ *             full playback. No sigil swirl, no edit affordances — the Done
+ *             chip (the existing modal-summon affordance) walks back to MODAL.
  *
  * Persistence: PalaceStore (global.persistentStorageSystem). Spatial Anchors
  * deferred — raw world poses are the v1 (DESIGN.md "Location linking").
@@ -23,6 +28,7 @@ import { MemoryPalaceUI } from "./MemoryPalaceUI";
 import { SigilController } from "./SigilController";
 import { ReticleController } from "./ReticleController";
 import { GemFactory } from "./GemFactory";
+import { ExploreController } from "./ExploreController";
 import { AsrController } from "./AsrController";
 import {
   PalaceStore, Palace, MemoryRecord,
@@ -52,7 +58,7 @@ const GAZE_DWELL_S = 0.8;                       // hold before the label blooms
 const GAZE_GRACE_S = 1.2;                       // label lingers after gaze leaves
 const GAZE_LABEL_LIFT = 11;                     // cm above the gem
 
-type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING";
+type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING" | "EXPLORE";
 
 @component
 export class MemoryPalace extends BaseScriptComponent {
@@ -74,8 +80,10 @@ export class MemoryPalace extends BaseScriptComponent {
   private store!: PalaceStore;
   private enhancer = new EnhanceService();
   private enhanceMeshMat!: Material;
+  private explore!: ExploreController;
   private palace: Palace | null = null;
   private selectedMemoryId: string | null = null;
+  private lastPalaceId: string | null = null;   // "active" palace for Explore
 
   private editorMode = global.deviceInfoSystem.isEditor();
   private stateAge = 0;
@@ -120,12 +128,17 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
       this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
       this.uiHud.onGazeSpeak.add(() => this.speakGazedMemory());
-      // Explore/Train: the UI shows its own coming-soon hint (Wednesday scope).
+      this.uiHud.onExplore.add(() => this.onExplore());
+      // Train: the UI still shows its own coming-soon hint (deferred).
 
       // Sigil cluster (SIK subscriptions bind in OnStart).
       this.sigil.start();
       this.sigil.onTapped.add(() => this.startWizard());
-      this.sigil.onDoneTapped.add(() => this.finishSession());
+      this.sigil.onDoneTapped.add(() => {
+        // The chip is the modal-summon affordance in both modes.
+        if (this.state === "EXPLORE") this.exitExplore();
+        else this.finishSession();
+      });
 
       if (this.editorMode) {
         this.uiHud.setHintText("Press New to start a palace");
@@ -158,10 +171,19 @@ export class MemoryPalace extends BaseScriptComponent {
     this.sigil = new SigilController(root, ribbonMatA, ribbonMatB, glowMat);
     this.reticle = new ReticleController(root, ringMat, glowMat);
     this.gems = new GemFactory(root, BRAND_MAT);
+    this.explore = new ExploreController(root, this.gems, this.enhancer);
 
     // Plain (non-additive) vertex-color clone for Snap3D GLBs — pairs with
     // use_vertex_color; never pass null to the gltf loader (editor crash).
     this.enhanceMeshMat = BRAND_MAT.clone();
+
+    // Spatial-audio listener rides the camera — required for the Explore
+    // whisper's positional mixing (without it LS warns every frame and
+    // spatialAudio silently no-ops).
+    const camObj = this.camera.getComponent().getSceneObject();
+    if (camObj.getComponent("Component.AudioListenerComponent") === null) {
+      camObj.createComponent("Component.AudioListenerComponent");
+    }
 
     // Faint dwell hum for the gaze reveal (loops while the ring builds).
     const humObj = global.scene.createSceneObject("GazeHum");
@@ -184,6 +206,7 @@ export class MemoryPalace extends BaseScriptComponent {
   private onCreatePalace(): void {
     if (this.state !== "MODAL") return;
     this.palace = this.store.createPalace();
+    this.lastPalaceId = this.palace.id;
     this.enterSession(false);
   }
 
@@ -195,6 +218,7 @@ export class MemoryPalace extends BaseScriptComponent {
       return;
     }
     this.palace = loaded;
+    this.lastPalaceId = loaded.id;
     for (const rec of loaded.memories) {
       this.spawnMemoryGem(rec);
       // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
@@ -205,6 +229,7 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private enterSession(restored: boolean): void {
     this.uiHud.hideModal();
+    this.sigil.setChipOnly(false);   // full cluster — sessions are for editing
     this.sigil.setActive(true);
     this.setState("SESSION");
     if (restored && this.palace !== null && this.palace.memories.length > 0) {
@@ -237,6 +262,61 @@ export class MemoryPalace extends BaseScriptComponent {
           (p.memories.length === 1 ? " memory" : " memories"));
       }
     }
+    this.setState("MODAL");
+  }
+
+  // ── Explore mode (view-only walk of the active palace) ─────────────────────
+
+  private onExplore(): void {
+    if (this.state !== "MODAL") return;
+    // Active palace = last created/loaded this run, else most recently updated.
+    let loaded: Palace | null = null;
+    if (this.lastPalaceId !== null) loaded = this.store.load(this.lastPalaceId);
+    if (loaded === null) {
+      const list = this.store.listPalaces();
+      if (list.length > 0) loaded = this.store.load(list[0].id);
+    }
+    if (loaded === null) {
+      this.uiHud.showToast("Nothing to explore yet — press New first");
+      return;
+    }
+    if (loaded.memories.length === 0) {
+      this.uiHud.showToast("\"" + loaded.name + "\" has no memories yet");
+      return;
+    }
+    this.palace = loaded;
+    this.lastPalaceId = loaded.id;
+    for (const rec of loaded.memories) {
+      this.spawnMemoryGem(rec);
+      // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
+      if (rec.enhance !== undefined) this.startEnhance(rec, true);
+    }
+    this.uiHud.hideModal();
+    this.sigil.setChipOnly(true);   // Done chip = the way home; no edit affordances
+    this.sigil.setActive(true);
+    this.explore.begin(loaded.memories);
+    this.explore.update(0, this.camera.getWorldPosition());   // LOD before first frame
+    this.setState("EXPLORE");
+    this.flash("Exploring \"" + loaded.name + "\"",
+      this.camera.getForwardPosition(100, false));
+    print("MemoryPalace: exploring \"" + loaded.name + "\" (" +
+      loaded.memories.length + " memories)");
+  }
+
+  /** Done chip during EXPLORE: nothing to save — just walk back to the modal. */
+  private exitExplore(): void {
+    if (this.state !== "EXPLORE") return;
+    this.explore.end();
+    this.closeMemoryCard();
+    this.gems.despawnAll();
+    this.uiHud.hideSigilLabel();
+    this.uiHud.hideDoneLabel();
+    this.uiHud.hideStatus();
+    this.flashRemaining = 0;
+    this.sigil.setActive(false);
+    this.sigil.setChipOnly(false);
+    this.palace = null;   // view-only: nothing changed, nothing to save
+    this.uiHud.showModal();
     this.setState("MODAL");
   }
 
@@ -338,7 +418,7 @@ export class MemoryPalace extends BaseScriptComponent {
   }
 
   private onGemSelected(memoryId: string): void {
-    if (this.state !== "SESSION" || this.palace === null) return;
+    if ((this.state !== "SESSION" && this.state !== "EXPLORE") || this.palace === null) return;
     let rec: MemoryRecord | null = null;
     for (const m of this.palace.memories) {
       if (m.id === memoryId) { rec = m; break; }
@@ -357,7 +437,19 @@ export class MemoryPalace extends BaseScriptComponent {
     const toCam = camPos.sub(pos).normalize();
     const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
     this.uiHud.showMemoryCard(rec.transcript, pos, quat.lookAt(toCam, upRef),
-      rec.enhance !== undefined);
+      rec.enhance !== undefined, this.state === "EXPLORE");
+    if (this.state === "EXPLORE") {
+      // Select = full playback: the whisper's TTS cache at full voice (shared
+      // with the gaze speak button; the whisper itself yields while the card
+      // is open via setSuppressed in onUpdate).
+      this.enhancer.generateSpeech(rec.id, rec.transcript)
+        .then((track) => {
+          if (this.selectedMemoryId !== memoryId) return;   // card already closed
+          const p = this.gems.basePosition(memoryId);
+          this.gems.playTrackAt(track, p !== null ? p : base, 0.85);
+        })
+        .catch((msg) => print("MemoryPalace: explore playback unavailable — " + msg));
+    }
     print("MemoryPalace: selected memory \"" + rec.transcript + "\" (" + memoryId + ")");
   }
 
@@ -617,14 +709,21 @@ export class MemoryPalace extends BaseScriptComponent {
     this.gems.update(dt, camPos);
     this.asr.update(dt);
 
+    // Explore soundscape: LOD + whisper + twinkles ride the same frame loop.
+    if (this.state === "EXPLORE") {
+      this.explore.setSuppressed(this.selectedMemoryId !== null);
+      this.explore.update(dt, camPos);
+    }
+
     // Status flash countdown (AIMING owns the status line exclusively).
     if (this.flashRemaining > 0 && this.state !== "AIMING") {
       this.flashRemaining -= dt;
       if (this.flashRemaining <= 0) this.uiHud.hideStatus();
     }
 
-    // Sigil cluster labels ride the swirl + Done chip during sessions.
-    if (this.state === "SESSION") {
+    // Sigil cluster labels ride the swirl + Done chip during sessions and
+    // Explore (chip-only there: labelAnchor stays null, so only "Done" shows).
+    if (this.state === "SESSION" || this.state === "EXPLORE") {
       const anchor = this.sigil.getLabelAnchor();
       if (anchor !== null) {
         this.uiHud.showSigilLabel();
@@ -654,8 +753,9 @@ export class MemoryPalace extends BaseScriptComponent {
     }
 
     // Gaze reveal: dwelling on a gem earns its orbit ring, motes, hum — then
-    // the memory's words bloom above it. Only while free-walking the session.
-    if (this.state === "SESSION" && this.selectedMemoryId === null) {
+    // the memory's words bloom above it. While free-walking a session or
+    // Explore (glinted anchors are excluded by gazeCandidates — no leaks).
+    if ((this.state === "SESSION" || this.state === "EXPLORE") && this.selectedMemoryId === null) {
       this.updateGaze(dt, camPos);
     } else if (this.gazeTargetId !== null || this.gazeRevealed) {
       this.clearGaze();

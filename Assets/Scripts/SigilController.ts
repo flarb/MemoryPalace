@@ -63,6 +63,7 @@ export class SigilController {
   private editorMode = global.deviceInfoSystem.isEditor();
   private elapsed = 0;
   private active = true;
+  private chipOnly = false;
   private labelAnchor: vec3 | null = null;
   private doneLabelAnchor: vec3 | null = null;
 
@@ -156,6 +157,20 @@ export class SigilController {
     }
   }
 
+  /**
+   * Explore mode: only the Done chip renders — the way back to the modal (the
+   * app's existing modal-summon affordance). The capture swirl and its
+   * "New Memory" label are edit affordances and stay suppressed (DESIGN.md:
+   * Explore is hands-clean; the modal handles mode switching).
+   */
+  setChipOnly(v: boolean): void {
+    this.chipOnly = v;
+    if (v) {
+      this.wrapper.enabled = false;
+      this.labelAnchor = null;
+    }
+  }
+
   /** World position for the "New Memory" label, or null when hidden. */
   getLabelAnchor(): vec3 | null { return this.labelAnchor; }
 
@@ -181,17 +196,23 @@ export class SigilController {
       return;
     }
 
-    this.wrapper.enabled = true;
-    this.wrapper.getTransform().setWorldPosition(pos);
-    this.labelAnchor = new vec3(pos.x, pos.y + LABEL_OFFSET, pos.z);
+    if (this.chipOnly) {
+      // Explore: the swirl (capture affordance) stays hidden; chip only.
+      this.wrapper.enabled = false;
+      this.labelAnchor = null;
+    } else {
+      this.wrapper.enabled = true;
+      this.wrapper.getTransform().setWorldPosition(pos);
+      this.labelAnchor = new vec3(pos.x, pos.y + LABEL_OFFSET, pos.z);
 
-    // Counter-rotating ribbons + gentle pulse (sine ease, STYLE.md motion).
-    this.ribbonA.getTransform().setLocalRotation(quat.angleAxis(this.elapsed * 1.5, vec3.up()));
-    this.ribbonB.getTransform().setLocalRotation(quat.angleAxis(-this.elapsed * 1.1 + Math.PI, vec3.up()));
-    const s = 1 + 0.08 * Math.sin((this.elapsed * Math.PI * 2) / 3);
-    this.ribbonA.getTransform().setLocalScale(new vec3(s, s, s));
-    this.ribbonB.getTransform().setLocalScale(new vec3(s, s, s));
-    this.disc.getTransform().setLocalScale(new vec3(s, s, s));
+      // Counter-rotating ribbons + gentle pulse (sine ease, STYLE.md motion).
+      this.ribbonA.getTransform().setLocalRotation(quat.angleAxis(this.elapsed * 1.5, vec3.up()));
+      this.ribbonB.getTransform().setLocalRotation(quat.angleAxis(-this.elapsed * 1.1 + Math.PI, vec3.up()));
+      const s = 1 + 0.08 * Math.sin((this.elapsed * Math.PI * 2) / 3);
+      this.ribbonA.getTransform().setLocalScale(new vec3(s, s, s));
+      this.ribbonB.getTransform().setLocalScale(new vec3(s, s, s));
+      this.disc.getTransform().setLocalScale(new vec3(s, s, s));
+    }
 
     // Done chip rides below the swirl; visual faces the viewer.
     const chipPos = new vec3(pos.x, pos.y - CHIP_DROP, pos.z);

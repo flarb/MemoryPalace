@@ -72,6 +72,8 @@ interface GemRecord {
   base: vec3;
   phase: number;
   scale: number;
+  resolved: boolean;                 // Explore LOD: false = anonymous glint
+  glint: SceneObject | null;         // lazy soft-mote stand-in (Explore)
 }
 
 interface PendingFit {
@@ -96,6 +98,8 @@ export class GemFactory {
   private conjureRingMesh: RenderMesh | null = null;
   private gazeRing: ConjureRing | null = null;
   private gazeRingMesh: RenderMesh | null = null;
+  private glintCoreMesh: RenderMesh | null = null;
+  private glintHaloMesh: RenderMesh | null = null;
   private gazeMoteAccum = 0;
   private particles: VaporParticle[] = [];
   private cleanup: TimedCleanup[] = [];
@@ -167,6 +171,8 @@ export class GemFactory {
       base: worldPos,
       phase: Math.random() * Math.PI * 2,
       scale: gemScale,
+      resolved: true,
+      glint: null,
     });
 
     // Fresh placements arrive with juice; restored palaces spawn quietly.
@@ -263,7 +269,10 @@ export class GemFactory {
       }
       g.enhanced = holder;
       g.enhancedKind = "mesh";
-      g.visual.enabled = false;
+      this.applyResolvedVisibility(g);
+      // Auto-fit needs live AABBs — keep the holder visible through the fit
+      // window even when glinted; the fit pass re-applies visibility after.
+      if (!g.resolved) holder.enabled = true;
       this.pendingFit.push({ memoryId: memoryId, holder: holder, frames: 0, target: ENHANCED_TARGET_CM });
       this.spawnVaporBurst(g.wrapper.getTransform().getWorldPosition());   // hatch burst
       print("GemFactory: enhanced mesh attached for " + memoryId);
@@ -293,7 +302,7 @@ export class GemFactory {
       holder.getTransform().setLocalScale(new vec3(IMAGE_HEIGHT_CM * aspect, IMAGE_HEIGHT_CM, 1));
       g.enhanced = holder;
       g.enhancedKind = "image";
-      g.visual.enabled = false;
+      this.applyResolvedVisibility(g);
       this.spawnVaporBurst(g.wrapper.getTransform().getWorldPosition());   // hatch burst
       print("GemFactory: enhanced image attached for " + memoryId);
       return true;
@@ -308,7 +317,7 @@ export class GemFactory {
       if (isNull(g.wrapper)) return false;
       if (g.enhanced === null) return false;
       this.clearEnhanced(g);
-      g.visual.enabled = true;
+      this.applyResolvedVisibility(g);
       this.setGlowTint(memoryId, RGB_VIOLET as [number, number, number]);
       this.spawnVaporBurst(g.wrapper.getTransform().getWorldPosition());
       print("GemFactory: enhancement removed for " + memoryId);
@@ -337,9 +346,99 @@ export class GemFactory {
     const out: { memoryId: string; pos: vec3 }[] = [];
     for (const g of this.gems) {
       if (isNull(g.wrapper)) continue;
+      if (!g.resolved) continue;   // glints stay anonymous (Explore) — no gaze leak
       out.push({ memoryId: g.memoryId, pos: g.wrapper.getTransform().getWorldPosition() });
     }
     return out;
+  }
+
+  /**
+   * Explore LOD: an unresolved gem renders as an anonymous GLINT — a soft
+   * additive mote (violet core + faint teal halo; STYLE.md gradient glows) —
+   * with visuals, light pool, and interaction hidden until approach.
+   */
+  setResolved(memoryId: string, resolved: boolean): void {
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return;
+      if (g.resolved === resolved) return;
+      g.resolved = resolved;
+      this.applyResolvedVisibility(g);
+      return;
+    }
+  }
+
+  private applyResolvedVisibility(g: GemRecord): void {
+    if (isNull(g.wrapper)) return;
+    // Glinted gems are unselectable — no content leaks at distance.
+    const inter = g.wrapper.getComponent(Interactable.getTypeName());
+    if (inter) inter.enabled = g.resolved;
+    const col = g.wrapper.getComponent("Physics.ColliderComponent");
+    if (col) col.enabled = g.resolved;
+    if (g.enhanced !== null && !isNull(g.enhanced)) g.enhanced.enabled = g.resolved;
+    g.visual.enabled = g.resolved && g.enhanced === null;
+    if (g.glow !== null && !isNull(g.glow)) g.glow.enabled = g.resolved;
+    if (!g.resolved && g.glint === null) g.glint = this.buildGlint(g);
+    if (g.glint !== null && !isNull(g.glint)) g.glint.enabled = !g.resolved;
+  }
+
+  /** Post-fit: re-sync an enhanced holder with the gem's resolve state (Explore). */
+  private applyFitVisibility(memoryId: string): void {
+    for (const g of this.gems) {
+      if (g.memoryId === memoryId) { this.applyResolvedVisibility(g); return; }
+    }
+  }
+
+  /** Soft anonymous mote: nested additive gradient discs, billboarded in update(). */
+  private buildGlint(g: GemRecord): SceneObject {
+    if (this.glintCoreMesh === null) this.glintCoreMesh = buildDiscMesh(1.5, RGB_LIGHT_VIOLET);
+    if (this.glintHaloMesh === null) {
+      this.glintHaloMesh = buildDiscMesh(3.0,
+        [RGB_TEAL[0] * 0.4, RGB_TEAL[1] * 0.4, RGB_TEAL[2] * 0.4]);
+    }
+    const glint = global.scene.createSceneObject("GemGlint");
+    glint.setParent(g.wrapper);   // rides the bob like everything else
+    glint.getTransform().setLocalPosition(vec3.zero());
+    const core = global.scene.createSceneObject("GlintCore");
+    core.setParent(glint);
+    const coreRmv = core.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    coreRmv.mesh = this.glintCoreMesh;
+    coreRmv.mainMaterial = this.burstMat;
+    const halo = global.scene.createSceneObject("GlintHalo");
+    halo.setParent(glint);
+    halo.getTransform().setLocalPosition(new vec3(0, 0, -0.15));   // behind the core
+    const haloRmv = halo.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    haloRmv.mesh = this.glintHaloMesh;
+    haloRmv.mainMaterial = this.burstMat;
+    return glint;
+  }
+
+  /** A couple of rising motes off a glint (Explore twinkle visual). */
+  emitGlintSparkle(memoryId: string): void {
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return;
+      if (this.puffMeshA === null) this.puffMeshA = buildDiscMesh(1.3, RGB_LIGHT_VIOLET);
+      if (this.puffMeshB === null) this.puffMeshB = buildDiscMesh(1.1, RGB_TEAL);
+      const center = g.wrapper.getTransform().getWorldPosition();
+      for (let i = 0; i < 2; i++) {
+        const obj = global.scene.createSceneObject("GlintSpark");
+        obj.setParent(this.parent);
+        const jitter = new vec3((Math.random() - 0.5) * 4, 0, (Math.random() - 0.5) * 4);
+        obj.getTransform().setWorldPosition(center.add(jitter));
+        const rmv = obj.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+        rmv.mesh = i % 2 === 0 ? this.puffMeshA : this.puffMeshB;
+        rmv.mainMaterial = this.burstMat;
+        this.particles.push({
+          obj: obj,
+          vel: new vec3(0, 8 + Math.random() * 5, 0),
+          age: 0,
+          life: 0.6 + Math.random() * 0.4,
+          size: 0.3 + Math.random() * 0.25,
+        });
+      }
+      return;
+    }
   }
 
   /**
@@ -524,10 +623,12 @@ export class GemFactory {
         f.holder.getTransform().setLocalScale(new vec3(k, k, k));
         print("GemFactory: fitted enhanced mesh (" + size.toFixed(1) + " cm native → ×" + k.toFixed(2) + ")");
         this.pendingFit.splice(i, 1);
+        this.applyFitVisibility(f.memoryId);   // re-sync with Explore resolve state
       } else if (f.frames > 12) {
         f.holder.getTransform().setLocalScale(new vec3(10, 10, 10));   // skill fallback floor
         print("GemFactory: enhanced mesh unmeasurable — fallback scale 10");
         this.pendingFit.splice(i, 1);
+        this.applyFitVisibility(f.memoryId);   // re-sync with Explore resolve state
       }
     }
 
@@ -593,6 +694,15 @@ export class GemFactory {
       if (g.glow !== null && !isNull(g.glow)) {
         const gs = 1 - (bob / (2.2 * g.scale)) * 0.1;
         g.glow.getTransform().setLocalScale(new vec3(gs, gs, gs));
+      }
+      // Explore glints: billboard toward the viewer + slow shimmer pulse.
+      if (!g.resolved && g.glint !== null && !isNull(g.glint)) {
+        const gpos = g.wrapper.getTransform().getWorldPosition();
+        const toCam = camPos.sub(gpos).normalize();
+        const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
+        g.glint.getTransform().setWorldRotation(quat.lookAt(toCam, upRef));
+        const gls = 0.85 + 0.3 * Math.sin(this.elapsed * 2.1 + g.phase * 3);
+        g.glint.getTransform().setLocalScale(new vec3(gls, gls, gls));
       }
     }
 

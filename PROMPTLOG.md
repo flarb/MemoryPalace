@@ -1,5 +1,37 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, afternoon — Explore mode (walk your palace)
+
+**Prompt:** "Ok, let's build 'explore' mode"
+
+**Increment:** the Explore button stops being a coming-soon stub. New
+`ExploreController.ts` drives the view-only palace walk per DESIGN.md:
+distant anchors render as anonymous additive **glints** (violet core, teal
+halo, shimmer-pulse; collider/gaze/content hidden — nothing leaks at range)
+that **resolve** into the gem/conjured object on approach (260/330 cm
+hysteresis); ONE **proximity whisper** at a time (nearest wins) opens at
+3 m — *before* visual resolution, so you hear memories before you see
+them — with a distance-driven volume ramp (0→0.42 by 0.9 m), sourced from
+the per-memory TTS cache (no recorded-audio persistence yet, by design);
+sparse **twinkles** on the nearest-3 glints (2.5–7 s cadence, 0.9 s global
+cooldown, new crystal-family `twinkle.wav`). EXPLORE state in
+MemoryPalace.ts resolves the active palace (graceful "Nothing to explore
+yet" when empty), suppresses all edit affordances — sigil shows only the
+teal **Done chip** as the exit — and the memory card opens **read-only**
+(Close only). Gaze reveal + TTS speak button carry over. Runtime
+AudioListener added to the camera (spatial audio prereq).
+
+**Verification:** builder self-test via seeded 3-anchor harness (removed
+after), then an independent QA pass on the *real* path: synthetic pinch on
+the label-verified Explore button → glint/twinkle/whisper/resolve/exit all
+proven from logs (ramp math exact: vol=0.31 at 147 cm) + captures (glints,
+resolved gem with label, restored modal). Two bugs caught mid-build:
+track-less AudioComponent property-write crash, missing AudioListener.
+Remaining user click-leg: gem select → read-only card. "Verify Palace"
+(3 memories) left in the editor store for manual testing; gone on LS
+restart. RSG-token caveat: whisper TTS falls back to silent glint after
+the ~1 h token expiry.
+
 ## Wed Aug 13 — The palace speaks (TTS on the gaze label)
 
 **Prompt:** "put like a 'speaker' button next to the text label on a memory.

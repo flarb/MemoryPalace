@@ -139,6 +139,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardActionRow: SceneObject | null = null
   private memCardEnhanceRow: SceneObject | null = null
   private memCardRemoveRow: SceneObject | null = null
+  private memCardReadOnlyRow: SceneObject | null = null
   private cardHasEnhance = false
   private realPos: {[name: string]: vec3} = {}
 
@@ -309,10 +310,12 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.listeningText) this.listeningText.text = state
   }
 
-  /** Memory card next to a selected gem: transcript + Delete + Close. */
-  showMemoryCard(transcript: string, worldPos: vec3, worldRot: quat, hasEnhance: boolean = false): void {
+  /** Memory card next to a selected gem: transcript + Delete + Close.
+   *  readOnly (Explore): view-only — no Delete/Enhance, just Close. */
+  showMemoryCard(transcript: string, worldPos: vec3, worldRot: quat,
+      hasEnhance: boolean = false, readOnly: boolean = false): void {
     this.cardHasEnhance = hasEnhance
-    this.setMemCardMode("main")   // reopening always lands on the action row
+    this.setMemCardMode(readOnly ? "readonly" : "main")   // reopening resets the row
     if (this.memCardText) {
       const MAX = 140
       this.memCardText.text = transcript.length > MAX ? transcript.slice(0, MAX) + "…" : transcript
@@ -355,6 +358,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.gazeLabelRoot.getTransform().setLocalPosition(this.realPos["gazelabel"])
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = false
     if (this.memCardRemoveRow !== null) this.memCardRemoveRow.enabled = false
+    if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = false
     this.applyVisibility()
   }
 
@@ -475,10 +479,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
     this.addModalButton(col, "New", ICON_NEW, () => this._onCreate.invoke())
     this.addModalButton(col, "Load", ICON_LOAD, () => this._onEditRequested.invoke())
-    this.addModalButton(col, "Explore", ICON_EXPLORE, () => {
-      this.showComingSoon("Explore")
-      this._onExplore.invoke()
-    })
+    this.addModalButton(col, "Explore", ICON_EXPLORE, () => this._onExplore.invoke())
     this.addModalButton(col, "Train", ICON_TRAIN, () => {
       this.showComingSoon("Train")
       this._onTrain.invoke()
@@ -705,15 +706,24 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
       this.rowButton(row, "Remove enhancement", 15, COL_ROSE, () => this._onCardEnhanceRemove.invoke())
     })
+
+    // Read-only action row (Explore): view-only card — Close, nothing else.
+    this.memCardReadOnlyRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
+      const row = this.flexRow(c, 21, 3, {
+        justify: FlexJustify.Center, align: FlexAlign.Center,
+      })
+      this.rowButton(row, "Close", 6.2, COL_TEXT, () => this._onCardClose.invoke())
+    })
   }
 
-  /** Swap the memory card between its action row and the conjure rows. */
-  private setMemCardMode(mode: "main" | "enhance"): void {
+  /** Swap the memory card between its action rows (edit / conjure / read-only). */
+  private setMemCardMode(mode: "main" | "enhance" | "readonly"): void {
     if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
     if (this.memCardRemoveRow !== null) {
       this.memCardRemoveRow.enabled = mode === "enhance" && this.cardHasEnhance
     }
+    if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = mode === "readonly"
   }
 
   /** Button inside an existing flex row (memory card actions). */
