@@ -418,17 +418,19 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.statusRoot.createComponent(Billboard.getTypeName())
 
     const content = this.obj(this.statusRoot, "Content", new vec3(0, 0, 0.6))
-    const col = this.flexColumn(content, 12, -1, {
-      gap: 0, padX: 0.7, padY: 0.4,
+    const col = this.flexColumn(content, 16, -1, {
+      gap: 0, padX: 0.9, padY: 0.55,
       justify: FlexJustify.Center, align: FlexAlign.Center,
     })
     const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
     flex.onLayoutComplete.add((r) => {
       plate.size = new vec2(r.containerWidth, r.containerHeight)
     })
-    this.flexChild(col, {w: 11, h: 1.4}, (c) => {
-      this.statusText = this.textIn(c, "Hold steady…", "Caption", {
-        font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEAL,
+    // Body role scaled for the reticle's ~150 cm viewing distance — the old
+    // Caption-at-110 sizing is why the label was unreadable out there.
+    this.flexChild(col, {w: 15, h: 2.2}, (c) => {
+      this.statusText = this.textIn(c, "Hold steady…", "Body", {
+        font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT, distanceCm: 150,
       })
     })
   }
@@ -437,11 +439,12 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
   private textIn(host: SceneObject, str: string, role: TextRole, opts: {
     font?: Font; color?: vec4; nativeWeight?: number; wrap?: {w: number; h: number}
+    distanceCm?: number   // viewing distance the role size is scaled for (default 110)
   }): Text {
     const t = host.createComponent("Component.Text") as Text
     t.text = str
     t.depthTest = true
-    applyTextRole(t, role)
+    applyTextRole(t, role, opts.distanceCm ?? 110)
     if (opts.font) t.font = opts.font
     if (opts.nativeWeight !== undefined) {
       // Match the loaded font file's native weight — avoids faux-bold synthesis.

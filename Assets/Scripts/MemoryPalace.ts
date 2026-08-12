@@ -26,8 +26,8 @@ const BRAND_MAT = requireAsset("../SimpleVertexBaseColor.lspkg/vertexBaseColorMa
 
 const PLACED_GEM_SCALE = 0.15;                  // ~9 cm
 const AIM_DISTANCE = 150;                       // cm along gaze (reticle + gem)
-const EDITOR_AIM_AUTOCONFIRM_S = 3.0;
 const PINCH_DEBOUNCE_S = 0.4;
+const GEM_SURFACE_OFFSET = 5;                   // cm along the hit normal (half gem + clearance)
 
 type WizardState = "MODAL" | "IDLE" | "AIMING" | "LISTENING";
 
@@ -57,13 +57,18 @@ export class MemoryPalace extends BaseScriptComponent {
   private memories: MemoryRecord[] = [];
 
   private editorMode = global.deviceInfoSystem.isEditor();
-  private aimElapsed = 0;
   private stateAge = 0;
 
   onAwake() {
     this.buildScene();
 
     this.createEvent("UpdateEvent").bind(() => this.onUpdate());
+
+    // Editor: mouse click = TapEvent — the explicit place/stop confirm.
+    // Device uses raw pinch (OnStart below). No auto-placement anywhere.
+    this.createEvent("TapEvent").bind(() => {
+      if (this.editorMode) this.onConfirmGesture();
+    });
 
     this.createEvent("OnStartEvent").bind(() => {
       // UI events (Channel A).
@@ -126,7 +131,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.sigil.setActive(false);
     this.reticle.show();
     this.uiHud.showStatus();
-    this.aimElapsed = 0;
+    this.uiHud.setStatusText(this.editorMode ? "Click to place" : "Pinch to place");
   }
 
   private confirmPlacement(): void {
@@ -154,9 +159,14 @@ export class MemoryPalace extends BaseScriptComponent {
     this.uiHud.hideTranscript();
 
     if (transcript.length > 0) {
-      // The gem IS the memory marker (DESIGN.md) — free-floating v0 anchor.
-      this.gems.spawn(anchor, PLACED_GEM_SCALE);
-      this.memories.push({ transcript: transcript, position: anchor, createdAt: getTime() });
+      // The gem IS the memory marker (DESIGN.md) — sits just off the surface
+      // when the reticle snapped, free-floats otherwise.
+      const surfaceNormal = this.reticle.getNormal();
+      const gemPos = surfaceNormal !== null
+        ? anchor.add(surfaceNormal.uniformScale(GEM_SURFACE_OFFSET))
+        : anchor;
+      this.gems.spawn(gemPos, PLACED_GEM_SCALE);
+      this.memories.push({ transcript: transcript, position: gemPos, createdAt: getTime() });
       print("MemoryPalace: captured \"" + transcript + "\" (" + this.memories.length + " memories)");
     } else {
       print("MemoryPalace: capture cancelled (empty transcript)");
@@ -177,7 +187,12 @@ export class MemoryPalace extends BaseScriptComponent {
   }
 
   private onPinchDown(): void {
-    if (this.stateAge < PINCH_DEBOUNCE_S) return;   // ignore the pinch that got us here
+    this.onConfirmGesture();
+  }
+
+  /** Shared confirm: pinch on device, tap/click in the editor. */
+  private onConfirmGesture(): void {
+    if (this.stateAge < PINCH_DEBOUNCE_S) return;   // ignore the gesture that got us here
     if (this.state === "AIMING") {
       this.confirmPlacement();
     } else if (this.state === "LISTENING") {
@@ -216,21 +231,12 @@ export class MemoryPalace extends BaseScriptComponent {
       const gaze = this.camera.getForwardPosition(AIM_DISTANCE, false);
       this.reticle.update(dt, camPos, gaze);
 
-      // Status line rides just under the reticle so the aim phase explains itself.
-      this.uiHud.setStatusPosition(new vec3(gaze.x, gaze.y - 8, gaze.z));
-
-      // Editor: raw pinch never fires in preview — auto-confirm keeps the
-      // wizard drivable end-to-end (DESIGN.md preview-testability rule).
-      if (this.editorMode) {
-        this.aimElapsed += dt;
-        const remain = Math.ceil(EDITOR_AIM_AUTOCONFIRM_S - this.aimElapsed);
-        this.uiHud.setStatusText("Placing memory in " + Math.max(1, remain) + "…");
-        if (this.aimElapsed >= EDITOR_AIM_AUTOCONFIRM_S) {
-          this.confirmPlacement();
-        }
-      } else {
-        this.uiHud.setStatusText("Pinch to place");
-      }
+      // Status label floats above the anchor point, pulled toward the viewer
+      // so it never buries into the surface the reticle snapped to.
+      const p = this.reticle.getPoint();
+      const toCam = camPos.sub(p).normalize();
+      this.uiHud.setStatusPosition(
+        new vec3(p.x, p.y + 8, p.z).add(toCam.uniformScale(5)));
     }
   }
 

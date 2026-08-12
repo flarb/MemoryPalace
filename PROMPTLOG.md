@@ -102,3 +102,22 @@ one line, no hand-rolled follower. Sentence-case sweep across every user-facing
 string (hint, status, toasts, card captions) and a new STYLE.md rule: UI copy is
 sentence case; all-caps is display-only. Verified with the preview camera pitched
 ~89° at the ceiling — panel centered in view, copy capitalized.
+
+## Tue Aug 11 (later) — Surface-snapped placement + pinch-to-place
+
+**Prompt:** placement reticle "doesn't align to the surface", label unreadable,
+"it just seems to auto place when you stop moving? It should require a pinch."
+
+**Increment (per /specs-world-query):** ReticleController now casts a WorldQuery
+ray along gaze each frame (HitTestSession, filtered, one request in flight):
+on hit the dashed ring snaps to the surface and aligns to the hit normal (flat
+on tables/floors, flush on walls; brand tilt only in float fallback), and the
+gem spawns offset along the normal. Auto-confirm deleted — placement requires
+an explicit gesture: pinch on device, click/TapEvent in editor ("Pinch to
+place" / "Click to place"). Status label bumped Caption→Body, distance-scaled
+for 150 cm, lavender on plate. Confirmed: WorldQueryModule works against the
+simulated preview room — screenshot shows the ring lying flat on the sideboard.
+Driven end-to-end: coordinate-targeted pinch (panel had followed the user's
+preview camera across the room — follow working as designed; uniqueId-targeted
+pinch timed out on the moving far target), wizard HELD in AIMING ~40 s of
+inspection, placed only on injected tap, captured, modal returned.
