@@ -29,12 +29,19 @@ export interface StoredVec3 {
   z: number;
 }
 
+export interface EnhanceSpec {
+  kind: "mesh" | "image";
+  prompt: string;
+}
+
 export interface MemoryRecord {
   id: string;
   transcript: string;
   position: StoredVec3;
   surfaceNormal?: StoredVec3;
   createdAt: number;
+  /** Conjured imagery request — regenerated lazily on palace load. */
+  enhance?: EnhanceSpec;
 }
 
 export interface Palace {

@@ -1,5 +1,39 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12 — Enhance: conjured 3D objects & images via RSG (Friday scope, early)
+
+**Prompt:** "associate a 3D image, animation, or picture with the memory…
+Remote Services Gateway… after you place a memory — not just delete but
+enhance — add a 3D mesh or generate a 2D image… displayed in place of the gem
+when navigating the palace."
+
+**Increment:**
+- RemoteServiceGateway v2.0.0 installed; **all three RSG tokens self-generated
+  programmatically** via ExecuteEditorCode + `Network.performAuthorizedHttpRequest`
+  (zero user clicks — the signed-in Lens Studio session authorizes it); example
+  prefab pruned, credentials wired, project saved.
+- `EnhanceService.ts`: Snap3D `submitAndGetStatus` (staged base→refined GLB,
+  `use_vertex_color`) + Imagen `imagen-3.0-generate-002` (the gemini-*-image
+  IDs 404 through RSG — skill lore); per-memory in-flight guard; styled prompt
+  templates.
+- Memory card: Enhance / Delete / Close + conjure row (3D / Image / Back) —
+  second row initializes during the FAR-park window (G3) and toggles post-init.
+- `GemFactory`: conjured visual replaces the gem look on the same wrapper
+  (bob/select/glow/vaporize all inherit); deferred AABB auto-fit for GLBs;
+  billboarded textured quad for images; re-enhance replaces cleanly.
+- Persistence: `enhance {kind, prompt}` rides the memory record; palace load
+  regenerates lazily — gems hatch as the palace wakes.
+
+**Verified by driving:** full path New → capture → select → Enhance → conjure:
+Snap3D **twice** end-to-end — base mesh in ~10 s, refined +1 s, auto-fit
+"1.0 cm native → ×14.07", replacement holder confirmed; screenshot shows
+"buy milk for Thursday" hatched into a small MILK JUG on the sideboard (the
+app's whole thesis in one frame). Zero real errors (audio-drop spam = benign
+ASR-pipeline echo). **Image path is code-complete but its final click is
+user-verified** — the synthetic hand kept clipping the neighboring "3D" button
+on the tightly-packed conjure row (new tool lore: neighbor-clip on ≤6.5 cm
+buttons; bias coordinate pinches to the far edge or verify by label text).
+
 ## Wed Aug 12 — Surface light pools under gems
 
 **Prompt:** "if the object is attached to a surface, place sort of a glowing

@@ -74,6 +74,21 @@ The gem **is** the default POI marker — one object, three jobs:
 - **On select (any mode):** the gem blooms open into the memory card — photo, text, audio playback, re-conjure button. This stays true even after hatching (the conjured object stands on a small gem base; selecting either opens the card).
 - **State display:** bright = fresh · shimmering = forging · hatched = conjured · dusty/faded = review overdue (decay, stretch).
 
+## Enhance v1 (SHIPPED — user-driven conjuring)
+
+The memory card's **Enhance** action opens a conjure row: **3D** (Snap3D
+text-to-3D GLB via RSG, `use_vertex_color`, base mesh hatches ~10–60 s and the
+refined mesh replaces it silently) or **Image** (Google **Imagen**
+`imagen-3.0-generate-002` — the only RSG-supported Google image path — shown as
+a billboarded quad). The conjured visual replaces the gem's look on the same
+wrapper, so bob, selection, the light pool, and vaporize keep working; GLBs
+auto-fit to ~14 cm via a deferred AABB pass (Snap3D natives can be 1 cm!).
+The enhance spec `{kind, prompt}` persists with the memory and regenerates
+lazily on palace load — gems hatch as the palace wakes. Styled prompt templates
+bake the brand palette in; the LLM mnemonic transformer below remains the next
+layer on top. RSG tokens self-generate via the editor plugin (≈1 h TTL —
+regenerate per session).
+
 ## Imagery router (one RSG LLM call)
 
 When the user conjures, a single LLM call (Remote Service Gateway → Gemini/OpenAI) transforms the literal transcript into mnemonic direction and returns JSON:

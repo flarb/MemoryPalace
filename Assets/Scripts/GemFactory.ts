@@ -13,8 +13,13 @@
 import { Interactable } from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable";
 import { buildMemoryGemMesh } from "./MemoryGemMesh";
 import { buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
+import { EnhanceKind } from "./EnhanceService";
 
 const VAPORIZE_SFX = requireAsset("../GeneratedSFX/vaporize.wav") as AudioTrackAsset;
+const IMAGE_MAT = requireAsset("../Materials/ImageMaterial.mat") as Material;
+
+const ENHANCED_TARGET_CM = 14;    // conjured mesh max dimension
+const IMAGE_HEIGHT_CM = 12;       // conjured image billboard height
 const PLACE_SFX = requireAsset("../GeneratedSFX/place.wav") as AudioTrackAsset;
 
 const ARRIVE_PUNCH_S = 0.2;       // grow 0 → overshoot
@@ -62,9 +67,18 @@ interface GemRecord {
   wrapper: SceneObject;
   visual: SceneObject;
   glow: SceneObject | null;
+  enhanced: SceneObject | null;      // conjured visual (replaces the gem look)
+  enhancedKind: EnhanceKind | null;
   base: vec3;
   phase: number;
   scale: number;
+}
+
+interface PendingFit {
+  memoryId: string;
+  holder: SceneObject;
+  frames: number;
+  target: number;
 }
 
 export class GemFactory {
@@ -72,6 +86,7 @@ export class GemFactory {
   private gems: GemRecord[] = [];
   private dying: DyingGem[] = [];
   private arriving: ArrivingGem[] = [];
+  private pendingFit: PendingFit[] = [];
   private particles: VaporParticle[] = [];
   private cleanup: TimedCleanup[] = [];
   private burstMat: Material;
@@ -137,6 +152,8 @@ export class GemFactory {
       wrapper: wrapper,
       visual: visual,
       glow: glow,
+      enhanced: null,
+      enhancedKind: null,
       base: worldPos,
       phase: Math.random() * Math.PI * 2,
       scale: gemScale,
@@ -176,7 +193,8 @@ export class GemFactory {
       if (col) col.enabled = false;
 
       const pos = g.wrapper.getTransform().getWorldPosition();
-      this.dying.push({ wrapper: g.wrapper, visual: g.visual, glow: g.glow, age: 0, baseWorld: pos });
+      const activeVisual = g.enhanced !== null ? g.enhanced : g.visual;
+      this.dying.push({ wrapper: g.wrapper, visual: activeVisual, glow: g.glow, age: 0, baseWorld: pos });
       this.spawnVaporBurst(pos);
       this.playOneShot(VAPORIZE_SFX, pos, 0.6);
       return true;
@@ -211,6 +229,94 @@ export class GemFactory {
         size: 0.7 + Math.random() * 0.8,
       });
     }
+  }
+
+  /**
+   * Conjured 3D object replaces the gem look: GLB instantiated under a holder
+   * child (bob/select/vaporize all keep working), auto-fit to ~14 cm.
+   * NEVER pass null as the material — the gltf loader hard-crashes the editor.
+   */
+  setEnhancedMesh(memoryId: string, gltfAsset: GltfAsset, material: Material): boolean {
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return false;
+      this.clearEnhanced(g);
+      const holder = global.scene.createSceneObject("EnhancedVisual");
+      holder.setParent(g.wrapper);
+      holder.getTransform().setLocalPosition(vec3.zero());
+      try {
+        (gltfAsset as any).tryInstantiate(holder, material);
+      } catch (e) {
+        print("GemFactory: gltf instantiate failed (" + e + ")");
+        holder.destroy();
+        return false;
+      }
+      g.enhanced = holder;
+      g.enhancedKind = "mesh";
+      g.visual.enabled = false;
+      this.pendingFit.push({ memoryId: memoryId, holder: holder, frames: 0, target: ENHANCED_TARGET_CM });
+      this.spawnVaporBurst(g.wrapper.getTransform().getWorldPosition());   // hatch burst
+      print("GemFactory: enhanced mesh attached for " + memoryId);
+      return true;
+    }
+    return false;
+  }
+
+  /** Conjured 2D image replaces the gem look: billboarded textured quad. */
+  setEnhancedImage(memoryId: string, texture: Texture): boolean {
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return false;
+      this.clearEnhanced(g);
+      const holder = global.scene.createSceneObject("EnhancedVisual");
+      holder.setParent(g.wrapper);
+      holder.getTransform().setLocalPosition(vec3.zero());
+      const img = holder.createComponent("Component.Image") as Image;
+      const mat = IMAGE_MAT.clone();
+      mat.mainPass.baseTex = texture;
+      mat.mainPass.baseColor = new vec4(1, 1, 1, 1);   // kill any placeholder tint
+      mat.mainPass.depthTest = true;
+      mat.mainPass.depthWrite = false;
+      img.clearMaterials();
+      img.addMaterial(mat);
+      const aspect = texture.getHeight() > 0 ? texture.getWidth() / texture.getHeight() : 1;
+      holder.getTransform().setLocalScale(new vec3(IMAGE_HEIGHT_CM * aspect, IMAGE_HEIGHT_CM, 1));
+      g.enhanced = holder;
+      g.enhancedKind = "image";
+      g.visual.enabled = false;
+      this.spawnVaporBurst(g.wrapper.getTransform().getWorldPosition());   // hatch burst
+      print("GemFactory: enhanced image attached for " + memoryId);
+      return true;
+    }
+    return false;
+  }
+
+  private clearEnhanced(g: GemRecord): void {
+    if (g.enhanced !== null && !isNull(g.enhanced)) g.enhanced.destroy();
+    g.enhanced = null;
+    g.enhancedKind = null;
+    for (let i = this.pendingFit.length - 1; i >= 0; i--) {
+      if (this.pendingFit[i].memoryId === g.memoryId) this.pendingFit.splice(i, 1);
+    }
+  }
+
+  /** Union max world dimension of every mesh under root (0 if unmeasurable). */
+  private measureMaxDim(root: SceneObject): number {
+    let min: vec3 | null = null;
+    let max: vec3 | null = null;
+    const visit = (obj: SceneObject): void => {
+      const rmv = obj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual | null;
+      if (rmv) {
+        const lo = rmv.worldAabbMin();
+        const hi = rmv.worldAabbMax();
+        min = min === null ? lo : new vec3(Math.min(min.x, lo.x), Math.min(min.y, lo.y), Math.min(min.z, lo.z));
+        max = max === null ? hi : new vec3(Math.max(max.x, hi.x), Math.max(max.y, hi.y), Math.max(max.z, hi.z));
+      }
+      for (let i = 0; i < obj.getChildrenCount(); i++) visit(obj.getChild(i));
+    };
+    visit(root);
+    if (min === null || max === null) return 0;
+    return Math.max(max.x - min.x, Math.max(max.y - min.y, max.z - min.z));
   }
 
   /** Flat disk-ring burst at the gem's base — magical placement dust. */
@@ -292,13 +398,41 @@ export class GemFactory {
 
   get count(): number { return this.gems.length; }
 
-  update(dt: number): void {
+  update(dt: number, camPos: vec3): void {
     this.elapsed += dt;
+
+    // Auto-fit freshly instantiated GLBs once their AABBs are valid.
+    for (let i = this.pendingFit.length - 1; i >= 0; i--) {
+      const f = this.pendingFit[i];
+      f.frames++;
+      if (isNull(f.holder)) { this.pendingFit.splice(i, 1); continue; }
+      if (f.frames < 2) continue;
+      const size = this.measureMaxDim(f.holder);
+      if (size > 0.01) {
+        const k = f.target / size;
+        f.holder.getTransform().setLocalScale(new vec3(k, k, k));
+        print("GemFactory: fitted enhanced mesh (" + size.toFixed(1) + " cm native → ×" + k.toFixed(2) + ")");
+        this.pendingFit.splice(i, 1);
+      } else if (f.frames > 12) {
+        f.holder.getTransform().setLocalScale(new vec3(10, 10, 10));   // skill fallback floor
+        print("GemFactory: enhanced mesh unmeasurable — fallback scale 10");
+        this.pendingFit.splice(i, 1);
+      }
+    }
+
     for (const g of this.gems) {
       if (isNull(g.wrapper)) continue;
-      // Spin on the visual child (rotation never touches the collider wrapper).
-      const spin = ((this.elapsed + g.phase) * (Math.PI * 2)) / 24;
-      g.visual.getTransform().setLocalRotation(quat.angleAxis(spin, vec3.up()));
+      if (g.enhanced !== null && g.enhancedKind === "image" && !isNull(g.enhanced)) {
+        // Conjured images billboard toward the viewer (+Z at camera).
+        const toCam = camPos.sub(g.wrapper.getTransform().getWorldPosition()).normalize();
+        const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
+        g.enhanced.getTransform().setWorldRotation(quat.lookAt(toCam, upRef));
+      } else {
+        // Spin on the active visual child (never the collider wrapper).
+        const spinTarget = g.enhanced !== null && !isNull(g.enhanced) ? g.enhanced : g.visual;
+        const spin = ((this.elapsed + g.phase) * (Math.PI * 2)) / 24;
+        spinTarget.getTransform().setLocalRotation(quat.angleAxis(spin, vec3.up()));
+      }
       // Bob = translation on the wrapper so the collider follows.
       const bob = Math.sin((this.elapsed * Math.PI * 2) / 4 + g.phase) * 2.2 * g.scale;
       g.wrapper.getTransform().setWorldPosition(new vec3(g.base.x, g.base.y + bob, g.base.z));

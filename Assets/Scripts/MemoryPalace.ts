@@ -28,6 +28,7 @@ import {
   PalaceStore, Palace, MemoryRecord,
   toStoredVec3, fromStoredVec3, freshMemoryId, MAX_MEMORIES_PER_PALACE,
 } from "./PalaceStore";
+import { EnhanceService, EnhanceKind, buildEnhancePrompt } from "./EnhanceService";
 import { HandInputData } from "SpectaclesInteractionKit.lspkg/Providers/HandInputData/HandInputData";
 import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider";
 
@@ -64,6 +65,8 @@ export class MemoryPalace extends BaseScriptComponent {
   private gems!: GemFactory;
   private asr = new AsrController();
   private store!: PalaceStore;
+  private enhancer = new EnhanceService();
+  private enhanceMeshMat!: Material;
   private palace: Palace | null = null;
   private selectedMemoryId: string | null = null;
 
@@ -99,6 +102,8 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onEditPalace.add((id: string) => this.onEditPalace(id));
       this.uiHud.onCardDelete.add(() => this.onDeleteSelected());
       this.uiHud.onCardClose.add(() => this.closeMemoryCard());
+      this.uiHud.onCardEnhanceMesh.add(() => this.onEnhanceSelected("mesh"));
+      this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
       // Explore/Train: the UI shows its own coming-soon hint (Wednesday scope).
 
       // Sigil cluster (SIK subscriptions bind in OnStart).
@@ -137,6 +142,10 @@ export class MemoryPalace extends BaseScriptComponent {
     this.sigil = new SigilController(root, ribbonMatA, ribbonMatB, glowMat);
     this.reticle = new ReticleController(root, ringMat, glowMat);
     this.gems = new GemFactory(root, BRAND_MAT);
+
+    // Plain (non-additive) vertex-color clone for Snap3D GLBs — pairs with
+    // use_vertex_color; never pass null to the gltf loader (editor crash).
+    this.enhanceMeshMat = BRAND_MAT.clone();
   }
 
   private makeAdditive(mat: Material): Material {
@@ -164,6 +173,8 @@ export class MemoryPalace extends BaseScriptComponent {
     this.palace = loaded;
     for (const rec of loaded.memories) {
       this.spawnMemoryGem(rec);
+      // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
+      if (rec.enhance !== undefined) this.startEnhance(rec, true);
     }
     this.enterSession(true);
   }
@@ -325,6 +336,69 @@ export class MemoryPalace extends BaseScriptComponent {
     print("MemoryPalace: selected memory \"" + rec.transcript + "\" (" + memoryId + ")");
   }
 
+  // ── Enhance (conjured imagery via Remote Service Gateway) ──────────────────
+
+  private onEnhanceSelected(kind: EnhanceKind): void {
+    if (this.state !== "SESSION" || this.palace === null || this.selectedMemoryId === null) return;
+    const id = this.selectedMemoryId;
+    if (this.enhancer.isBusy(id)) {
+      this.flash("Already conjuring this memory", this.gems.basePosition(id));
+      return;
+    }
+    let rec: MemoryRecord | null = null;
+    for (const m of this.palace.memories) {
+      if (m.id === id) { rec = m; break; }
+    }
+    if (rec === null) return;
+    rec.enhance = { kind: kind, prompt: buildEnhancePrompt(kind, rec.transcript) };
+    this.store.save(this.palace);   // the conjure request persists with the palace
+    this.closeMemoryCard();
+    this.startEnhance(rec, false);
+  }
+
+  /** Kick generation for a memory's stored enhance spec; visuals hatch async. */
+  private startEnhance(rec: MemoryRecord, quiet: boolean): void {
+    if (rec.enhance === undefined) return;
+    const flashAt = (): vec3 | null => {
+      const p = this.gems.basePosition(rec.id);
+      return p !== null ? new vec3(p.x, p.y + 12, p.z) : null;
+    };
+    if (!quiet) {
+      this.flash(rec.enhance.kind === "mesh" ? "Conjuring object…" : "Conjuring image…", flashAt());
+    }
+    print("MemoryPalace: conjuring " + rec.enhance.kind + " for \"" + rec.transcript + "\"");
+
+    if (rec.enhance.kind === "image") {
+      this.enhancer.generateImage(rec.id, rec.enhance.prompt)
+        .then((tex) => {
+          if (this.gems.setEnhancedImage(rec.id, tex)) {
+            this.flash("✓ Image conjured", flashAt());
+            print("MemoryPalace: image conjured for " + rec.id);
+          }
+        })
+        .catch((msg) => {
+          this.flash("Conjure failed — try again", flashAt());
+          print("MemoryPalace: image conjure failed — " + msg);
+        });
+    } else {
+      this.enhancer.generateMesh(rec.id, rec.enhance.prompt,
+        (baseMesh) => {
+          if (this.gems.setEnhancedMesh(rec.id, baseMesh, this.enhanceMeshMat)) {
+            this.flash("✓ Object conjured (refining…)", flashAt());
+            print("MemoryPalace: base mesh conjured for " + rec.id);
+          }
+        },
+        (refinedMesh) => {
+          this.gems.setEnhancedMesh(rec.id, refinedMesh, this.enhanceMeshMat);
+          print("MemoryPalace: refined mesh swapped in for " + rec.id);
+        },
+        (msg) => {
+          this.flash("Conjure failed — try again", flashAt());
+          print("MemoryPalace: mesh conjure failed — " + msg);
+        });
+    }
+  }
+
   private onDeleteSelected(): void {
     if (this.state !== "SESSION" || this.palace === null || this.selectedMemoryId === null) return;
     const id = this.selectedMemoryId;
@@ -402,7 +476,7 @@ export class MemoryPalace extends BaseScriptComponent {
     const camPos = this.camera.getWorldPosition();
 
     this.sigil.update(dt, camPos);
-    this.gems.update(dt);
+    this.gems.update(dt, camPos);
     this.asr.update(dt);
 
     // Status flash countdown (AIMING owns the status line exclusively).

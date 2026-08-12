@@ -117,6 +117,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   get onCardDelete(): PublicApi<void> { return this._onCardDelete.publicApi() }
   private _onCardClose = new Event<void>()
   get onCardClose(): PublicApi<void> { return this._onCardClose.publicApi() }
+  private _onCardEnhanceMesh = new Event<void>()
+  get onCardEnhanceMesh(): PublicApi<void> { return this._onCardEnhanceMesh.publicApi() }
+  private _onCardEnhanceImage = new Event<void>()
+  get onCardEnhanceImage(): PublicApi<void> { return this._onCardEnhanceImage.publicApi() }
 
   // ── Panel roots + state ────────────────────────────────────────────────────
   private modalRoot!: SceneObject
@@ -125,6 +129,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private doneLabelRoot!: SceneObject
   private statusRoot!: SceneObject
   private memCardRoot!: SceneObject
+  private memCardActionRow: SceneObject | null = null
+  private memCardEnhanceRow: SceneObject | null = null
   private realPos: {[name: string]: vec3} = {}
 
   private wantModal = true
@@ -280,6 +286,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
   /** Memory card next to a selected gem: transcript + Delete + Close. */
   showMemoryCard(transcript: string, worldPos: vec3, worldRot: quat): void {
+    this.setMemCardMode("main")   // reopening always lands on the action row
     if (this.memCardText) {
       const MAX = 140
       this.memCardText.text = transcript.length > MAX ? transcript.slice(0, MAX) + "…" : transcript
@@ -319,6 +326,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.labelRoot.getTransform().setLocalPosition(this.realPos["label"])
     this.doneLabelRoot.getTransform().setLocalPosition(this.realPos["donelabel"])
     this.statusRoot.getTransform().setLocalPosition(this.realPos["status"])
+    if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = false
     this.applyVisibility()
   }
 
@@ -639,14 +647,33 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
     })
 
-    // Delete (destructive soft rose, never alarm-red) + Close.
-    this.flexChild(col, {w: 21, h: 3}, (c) => {
+    // Action row: Enhance (conjure imagery) / Delete (soft rose) / Close.
+    this.memCardActionRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
       const row = this.flexRow(c, 21, 3, {
-        justify: FlexJustify.Center, align: FlexAlign.Center, gap: 1.2,
+        justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
       })
-      this.rowButton(row, "Delete", 8, COL_ROSE, () => this._onCardDelete.invoke())
-      this.rowButton(row, "Close", 8, COL_TEXT, () => this._onCardClose.invoke())
+      this.rowButton(row, "Enhance", 6.8, COL_TEAL, () => this.setMemCardMode("enhance"))
+      this.rowButton(row, "Delete", 6.2, COL_ROSE, () => this._onCardDelete.invoke())
+      this.rowButton(row, "Close", 5.6, COL_TEXT, () => this._onCardClose.invoke())
     })
+
+    // Conjure row (revealed by Enhance): pick the imagery kind.
+    // Built ENABLED so its buttons initialize during the FAR_POS park window
+    // (G3); applyInitialVisibility hides it, and toggles only happen post-init.
+    this.memCardEnhanceRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
+      const row = this.flexRow(c, 21, 3, {
+        justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
+      })
+      this.rowButton(row, "3D", 5, COL_LVIOLET, () => this._onCardEnhanceMesh.invoke())
+      this.rowButton(row, "Image", 6.5, COL_LVIOLET, () => this._onCardEnhanceImage.invoke())
+      this.rowButton(row, "Back", 5, COL_MUTED, () => this.setMemCardMode("main"))
+    })
+  }
+
+  /** Swap the memory card between its action row and the conjure row. */
+  private setMemCardMode(mode: "main" | "enhance"): void {
+    if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
+    if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
   }
 
   /** Button inside an existing flex row (memory card actions). */
