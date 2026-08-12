@@ -1,5 +1,25 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12 — Surface light pools under gems
+
+**Prompt:** "if the object is attached to a surface, place sort of a glowing
+disc sprite on the surface to make it appear that the memory is casting a
+light on the surface? A subtle glow effect that's not much bigger than the
+object itself?"
+
+**Increment:** surface-attached gems now cast a light pool — the existing
+`buildDiscMesh` already fades center-color→black at the rim, which under
+additive blending IS a soft radial glow (no new mesh builder needed). A static
+6 cm-radius violet disc sits at the stored surface point (+0.35 cm lift),
++Z-aligned to the hit normal — flat pool on tables, flush halo on walls. It
+deliberately does NOT bob with the gem (the pool stays put while the light
+source floats); instead it breathes counter to the bob (gem closer → pool
+~10% fuller), grows in with the arrival punch, flares with the death punch,
+and extinguishes with the vaporize. Free-floating gems get no pool — nothing
+to cast onto. Verified live: GemGlow at the surface point with normal-aligned
+rotation against a vertical surface (wall placement), screenshot shows the
+violet halo pooling on the poster around the gem; zero errors.
+
 ## Wed Aug 12 — Placement juice, gentler audio, New/Load rename
 
 **Prompt:** vaporize "a bit too loud and dramatic, I want something quieter and

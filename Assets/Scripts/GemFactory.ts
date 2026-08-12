@@ -12,7 +12,7 @@
  */
 import { Interactable } from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable";
 import { buildMemoryGemMesh } from "./MemoryGemMesh";
-import { buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL } from "./MemoryMeshes";
+import { buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
 
 const VAPORIZE_SFX = requireAsset("../GeneratedSFX/vaporize.wav") as AudioTrackAsset;
 const PLACE_SFX = requireAsset("../GeneratedSFX/place.wav") as AudioTrackAsset;
@@ -22,6 +22,9 @@ const ARRIVE_SETTLE_S = 0.16;     // overshoot → 1
 const ARRIVE_PUNCH_SCALE = 1.18;
 const PLACE_PARTICLES = 12;
 
+const GLOW_RADIUS = 6;            // cm — light pool under a surface gem (~gem width +30%)
+const GLOW_LIFT = 0.35;           // cm off the surface (z-fight guard)
+
 const VAPOR_PUNCH_S = 0.12;       // punch-out phase
 const VAPOR_SHRINK_S = 0.55;      // shrink-to-nothing phase
 const VAPOR_PUNCH_SCALE = 1.35;
@@ -30,12 +33,14 @@ const VAPOR_PARTICLES = 14;
 interface DyingGem {
   wrapper: SceneObject;
   visual: SceneObject;
+  glow: SceneObject | null;
   age: number;
   baseWorld: vec3;
 }
 
 interface ArrivingGem {
   visual: SceneObject;
+  glow: SceneObject | null;
   age: number;
 }
 
@@ -56,6 +61,7 @@ interface GemRecord {
   memoryId: string;
   wrapper: SceneObject;
   visual: SceneObject;
+  glow: SceneObject | null;
   base: vec3;
   phase: number;
   scale: number;
@@ -71,6 +77,7 @@ export class GemFactory {
   private burstMat: Material;
   private puffMeshA: RenderMesh | null = null;
   private puffMeshB: RenderMesh | null = null;
+  private glowMesh: RenderMesh | null = null;
   private elapsed = 0;
 
   constructor(private parent: SceneObject, private material: Material) {
@@ -83,7 +90,7 @@ export class GemFactory {
 
   spawn(worldPos: vec3, gemScale: number, memoryId: string,
         onSelected: (memoryId: string) => void,
-        placeFx?: { origin: vec3; normal: vec3 }): SceneObject {
+        opts?: { surface?: { point: vec3; normal: vec3 }; arrive?: boolean }): SceneObject {
     const key = gemScale.toFixed(3);
     if (!this.meshCache[key]) {
       this.meshCache[key] = buildMemoryGemMesh(gemScale);
@@ -108,20 +115,41 @@ export class GemFactory {
     rmv.mesh = this.meshCache[key];
     rmv.mainMaterial = this.material;
 
+    // Surface-attached gems cast a soft light pool onto the surface: a static
+    // additive glow disc at the base (it never bobs with the gem — the pool
+    // stays put while the light source floats).
+    let glow: SceneObject | null = null;
+    if (opts !== undefined && opts.surface !== undefined) {
+      if (this.glowMesh === null) this.glowMesh = buildDiscMesh(GLOW_RADIUS, RGB_VIOLET);
+      const n = opts.surface.normal.normalize();
+      glow = global.scene.createSceneObject("GemGlow");
+      glow.setParent(this.parent);
+      glow.getTransform().setWorldPosition(opts.surface.point.add(n.uniformScale(GLOW_LIFT)));
+      const upRef = Math.abs(n.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
+      glow.getTransform().setWorldRotation(quat.lookAt(n, upRef));   // +Z along the normal
+      const glowRmv = glow.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+      glowRmv.mesh = this.glowMesh;
+      glowRmv.mainMaterial = this.burstMat;
+    }
+
     this.gems.push({
       memoryId: memoryId,
       wrapper: wrapper,
       visual: visual,
+      glow: glow,
       base: worldPos,
       phase: Math.random() * Math.PI * 2,
       scale: gemScale,
     });
 
     // Fresh placements arrive with juice; restored palaces spawn quietly.
-    if (placeFx !== undefined) {
+    if (opts !== undefined && opts.arrive === true) {
       visual.getTransform().setLocalScale(vec3.zero());   // grows in via update()
-      this.arriving.push({ visual: visual, age: 0 });
-      this.spawnPlaceBurst(placeFx.origin, placeFx.normal);
+      if (glow !== null) glow.getTransform().setLocalScale(vec3.zero());
+      this.arriving.push({ visual: visual, glow: glow, age: 0 });
+      const burstOrigin = opts.surface !== undefined ? opts.surface.point : worldPos;
+      const burstNormal = opts.surface !== undefined ? opts.surface.normal : vec3.up();
+      this.spawnPlaceBurst(burstOrigin, burstNormal);
       this.playOneShot(PLACE_SFX, worldPos, 0.6);
     }
     return wrapper;
@@ -148,7 +176,7 @@ export class GemFactory {
       if (col) col.enabled = false;
 
       const pos = g.wrapper.getTransform().getWorldPosition();
-      this.dying.push({ wrapper: g.wrapper, visual: g.visual, age: 0, baseWorld: pos });
+      this.dying.push({ wrapper: g.wrapper, visual: g.visual, glow: g.glow, age: 0, baseWorld: pos });
       this.spawnVaporBurst(pos);
       this.playOneShot(VAPORIZE_SFX, pos, 0.6);
       return true;
@@ -236,6 +264,8 @@ export class GemFactory {
     for (let i = 0; i < this.gems.length; i++) {
       if (this.gems[i].memoryId === memoryId) {
         if (!isNull(this.gems[i].wrapper)) this.gems[i].wrapper.destroy();
+        const glow = this.gems[i].glow;
+        if (glow !== null && !isNull(glow)) glow.destroy();
         this.gems.splice(i, 1);
         return true;
       }
@@ -247,6 +277,7 @@ export class GemFactory {
   despawnAll(): void {
     for (const g of this.gems) {
       if (!isNull(g.wrapper)) g.wrapper.destroy();
+      if (g.glow !== null && !isNull(g.glow)) g.glow.destroy();
     }
     this.gems = [];
   }
@@ -271,6 +302,12 @@ export class GemFactory {
       // Bob = translation on the wrapper so the collider follows.
       const bob = Math.sin((this.elapsed * Math.PI * 2) / 4 + g.phase) * 2.2 * g.scale;
       g.wrapper.getTransform().setWorldPosition(new vec3(g.base.x, g.base.y + bob, g.base.z));
+      // The light pool breathes counter to the bob: gem closer → pool fuller.
+      // (Arriving gems overwrite this later in update() — last write wins.)
+      if (g.glow !== null && !isNull(g.glow)) {
+        const gs = 1 - (bob / (2.2 * g.scale)) * 0.1;
+        g.glow.getTransform().setLocalScale(new vec3(gs, gs, gs));
+      }
     }
 
     // Arriving gems: grow in with a punch-overshoot, then settle to rest.
@@ -280,6 +317,7 @@ export class GemFactory {
       if (isNull(a.visual)) { this.arriving.splice(i, 1); continue; }
       if (a.age >= ARRIVE_PUNCH_S + ARRIVE_SETTLE_S) {
         a.visual.getTransform().setLocalScale(vec3.one());
+        if (a.glow !== null && !isNull(a.glow)) a.glow.getTransform().setLocalScale(vec3.one());
         this.arriving.splice(i, 1);
         continue;
       }
@@ -292,6 +330,7 @@ export class GemFactory {
         s = ARRIVE_PUNCH_SCALE - (ARRIVE_PUNCH_SCALE - 1) * t * t;    // ease-in settle
       }
       a.visual.getTransform().setLocalScale(new vec3(s, s, s));
+      if (a.glow !== null && !isNull(a.glow)) a.glow.getTransform().setLocalScale(new vec3(s, s, s));
     }
 
     // Dying gems: punch out, then shrink to nothing with a spin-up and rise.
@@ -301,6 +340,7 @@ export class GemFactory {
       if (isNull(d.wrapper)) { this.dying.splice(i, 1); continue; }
       if (d.age >= VAPOR_PUNCH_S + VAPOR_SHRINK_S) {
         d.wrapper.destroy();
+        if (d.glow !== null && !isNull(d.glow)) d.glow.destroy();
         this.dying.splice(i, 1);
         continue;
       }
@@ -313,6 +353,8 @@ export class GemFactory {
         s = VAPOR_PUNCH_SCALE * (1 - t * t * t);                     // ease-in shrink
       }
       d.visual.getTransform().setLocalScale(new vec3(s, s, s));
+      // The light pool flares with the death punch, then extinguishes.
+      if (d.glow !== null && !isNull(d.glow)) d.glow.getTransform().setLocalScale(new vec3(s, s, s));
       // The memory unwinds as it vaporizes.
       const spin = (this.elapsed * Math.PI * 2) / 24 + d.age * d.age * 9;
       d.visual.getTransform().setLocalRotation(quat.angleAxis(spin, vec3.up()));

@@ -290,16 +290,16 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private spawnMemoryGem(rec: MemoryRecord, arrive: boolean = false): void {
     const pos = fromStoredVec3(rec.position);
-    let placeFx: { origin: vec3; normal: vec3 } | undefined = undefined;
-    if (arrive) {
-      const n = rec.surfaceNormal !== undefined
-        ? fromStoredVec3(rec.surfaceNormal).normalize()
-        : vec3.up();
-      // Burst from the gem's BASE — the surface point it sits on.
-      placeFx = { origin: pos.sub(n.uniformScale(GEM_SURFACE_OFFSET)), normal: n };
+    // Surface-attached memories get a light pool at their base (and the
+    // placement burst uses the same point + normal).
+    let surface: { point: vec3; normal: vec3 } | undefined = undefined;
+    if (rec.surfaceNormal !== undefined) {
+      const n = fromStoredVec3(rec.surfaceNormal).normalize();
+      surface = { point: pos.sub(n.uniformScale(GEM_SURFACE_OFFSET)), normal: n };
     }
     this.gems.spawn(pos, PLACED_GEM_SCALE, rec.id,
-      (memoryId) => this.onGemSelected(memoryId), placeFx);
+      (memoryId) => this.onGemSelected(memoryId),
+      { surface: surface, arrive: arrive });
   }
 
   private onGemSelected(memoryId: string): void {
