@@ -1,5 +1,33 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, evening — The menu follows your gaze downhill
+
+**Prompt:** "the main menu doesn't seem super responsive to the vertical
+follow, shouldn't it move towards my gaze over time at least So if I
+stopped looking here, it should slide into view?" (screenshot: modal
+stranded high, only its bottom edge in frame while looking at the couch)
+
+**Increment:** root cause read straight out of UIKit's source
+(Cache/…/Frame/modules/SmoothFollow.ts): inside the tilt band (±25° up /
+35° down pitch) SmoothFollow does NO vertical follow at all — its own doc
+says it "doesn't affect positioning when the user looks up and down" —
+and past the thresholds, tilt mode gaze-tracks but then RESTORES the
+pre-tilt elevation on exit. Looking at the couch (~15–20° down) sits in
+the dead band forever. Fix: `updateModalVerticalAssist()` in
+MemoryPalaceUI — inside the dead band, ease the frame's world-Y toward
+the gaze line at the panel's distance (7° wake deadzone, 2° rest, ~0.5 s
+time constant, ±38 cm elevation clamp to stay inside SmoothFollow's
+band). It's cooperative, not a fight: SmoothFollow's neutral branch
+adopts current Y as its target, so the two writers converge. Steep
+pitches still belong to UIKit tilt mode; drags yield via the frame's
+public onTranslationStart/End.
+
+**Verification:** isolated the assist from UIKit tilt with a controlled
+preview test — reset camera to level (panel glides back), then pitch
+-15°, squarely inside the dead band UIKit ignores: capture shows the
+modal centered in the lowered view (pre-fix it stayed stranded high, as
+in the user's screenshot). Boot + logs clean.
+
 ## Wed Aug 12, later still — UI sizing audit: the pill learns to wrap
 
 **Prompts:** "make sure every UI element is properly sized. Look at this

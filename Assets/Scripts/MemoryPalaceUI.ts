@@ -34,6 +34,7 @@ import {Frame} from "SpectaclesUIKit.lspkg/Scripts/Components/Frame/Frame"
 import {Button} from "SpectaclesUIKit.lspkg/Scripts/Components/Button/Button"
 import {Billboard} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Billboard/Billboard"
 import Event, {PublicApi} from "SpectaclesInteractionKit.lspkg/Utils/Event"
+import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider"
 
 // ── Assets (requireAsset — never @input) ─────────────────────────────────────
 const imageMaterial = requireAsset("../Materials/ImageMaterial.mat") as Material
@@ -92,6 +93,19 @@ const STATUS_CHAR_W = (roleSize("Body", 150) / 43.886) * 0.53
 const STATUS_MAX_CHARS = 68 // ellipsis cap ⇒ never more than 3 wrapped lines
 const MODAL_LINE_MAX = 46   // modal toast line: Caption capacity of the 22 cm slot
 const PICKER_NAME_MAX = 20  // palace name within "name — N memories" (17 cm row)
+
+// ── Modal vertical follow assist ─────────────────────────────────────────────
+// UIKit SmoothFollow ignores elevation inside its tilt band (±25°/35° pitch) —
+// the panel strands high/low when the user settles their gaze elsewhere. This
+// assist eases the frame's height toward the gaze line inside that band; its
+// neutral branch adopts external Y (target.y = current pos.y), so nothing
+// fights. Steeper pitches are still owned by UIKit tilt mode.
+const VFOLLOW_ENTER_DEG = 7   // gaze↕panel offset that wakes the slide
+const VFOLLOW_SETTLE_DEG = 2  // offset at which the slide rests (hysteresis)
+const VFOLLOW_K = 2.0         // per-second ease rate (~63% in 0.5 s)
+const VFOLLOW_TILT_UP = 25    // UIKit defaults — mirror, don't exceed
+const VFOLLOW_TILT_DOWN = 35
+const VFOLLOW_MAX_ELEV = 38   // stay inside SmoothFollow's ±40 clamp band
 
 // ── Layout constants ─────────────────────────────────────────────────────────
 const LAYOUT_Z_LIFT = 0.02
@@ -189,6 +203,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private cardHintText: Text | null = null
   private statusText: Text | null = null
   private statusPlate: BackPlate | null = null
+  private modalDragging = false
+  private vAssistActive = false
   private memCardText: Text | null = null
   private comingSoonClear!: DelayedCallbackEvent
 
@@ -203,6 +219,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
     this.comingSoonClear = this.createEvent("DelayedCallbackEvent") as DelayedCallbackEvent
     this.comingSoonClear.bind(() => { if (this.comingSoonText) this.comingSoonText.text = "" })
+
+    this.createEvent("UpdateEvent").bind(() => this.updateModalVerticalAssist())
 
     // BackPlate (and every UIKit Element) initializes on OnStartEvent — a
     // SceneObject disabled before start never initializes (G3). So hidden
@@ -471,6 +489,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       frame.setUseFollow(true)
       frame.setFollowing(true)
       frame.useTiltMode = true   // gaze-tracking past pitch thresholds — follows look up/down too
+      // Vertical assist yields to the hand while the user drags the frame.
+      frame.onTranslationStart.add(() => { this.modalDragging = true })
+      frame.onTranslationEnd.add(() => { this.modalDragging = false })
       this.modalFrame = frame
 
       const host = frame.contentTransform.getSceneObject()
@@ -943,6 +964,37 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         wrap: {w: STATUS_WRAP_W, h: STATUS_LINE_H},
       })
     })
+  }
+
+  // ── Modal vertical follow assist (see VFOLLOW_* constants) ────────────────
+  // Pitch conventions mirror UIKit SmoothFollow: pitch > 0 = looking up.
+
+  private updateModalVerticalAssist(): void {
+    if (!this.initDone || !this.wantModal || this.modalFrame === null || this.modalDragging) return
+    const camT = WorldCameraFinderProvider.getInstance().getTransform()
+    const f = camT.forward
+    const pitch = Math.atan2(-f.y, Math.sqrt(f.x * f.x + f.z * f.z))
+    const pitchDeg = pitch * (180 / Math.PI)
+    if (pitchDeg > VFOLLOW_TILT_UP || pitchDeg < -VFOLLOW_TILT_DOWN) {
+      this.vAssistActive = false   // steep gaze — UIKit tilt mode owns elevation
+      return
+    }
+    const t = this.modalRoot.getTransform()
+    const pos = t.getWorldPosition()
+    const cam = camT.getWorldPosition()
+    const dx = pos.x - cam.x
+    const dz = pos.z - cam.z
+    const horiz = Math.sqrt(dx * dx + dz * dz)
+    if (horiz < 1) return
+    const pitchToPanel = Math.atan2(pos.y - cam.y, horiz)
+    const offDeg = Math.abs(pitchToPanel - pitch) * (180 / Math.PI)
+    if (!this.vAssistActive && offDeg > VFOLLOW_ENTER_DEG) this.vAssistActive = true
+    else if (this.vAssistActive && offDeg < VFOLLOW_SETTLE_DEG) this.vAssistActive = false
+    if (!this.vAssistActive) return
+    const rawTarget = cam.y + Math.tan(pitch) * horiz
+    const targetY = Math.min(cam.y + VFOLLOW_MAX_ELEV, Math.max(cam.y - VFOLLOW_MAX_ELEV, rawTarget))
+    const k = Math.min(1, VFOLLOW_K * getDeltaTime())
+    t.setWorldPosition(new vec3(pos.x, pos.y + (targetY - pos.y) * k, pos.z))
   }
 
   // ── Element helpers ────────────────────────────────────────────────────────
