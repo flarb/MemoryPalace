@@ -71,3 +71,21 @@ log trace pinch → aim(3 s) → fallback → `captured (1 memories)` → modal 
 and runtime-queried the status panel positioned at the reticle point mid-aim.
 Second driven run: 2 memories. Learned: editor auto-recompile resets the
 preview and mints new runtime UIDs — always re-discover before interacting.
+
+## Tue Aug 11 (later) — Follow panel + credit
+
+**Prompt:** "the memory palace main interface doesn't follow you — it should be
+one of those UIKit panels that follows you around. Also on the bottom right put
+FLARB LLC for the credit."
+
+**Increment (agent: Claude Code, inline, per /specs-build-ui):** StartModal
+converted from static BackPlate to UIKit **Frame** with head-follow
+(`setUseFollow(true)` / `setFollowing(true)`, close + follow buttons hidden) —
+the AppLauncherDock reference pattern. Content now builds under
+`frame.contentTransform` inside `frame.onInitialized` (ReplayEvent; the
+contentTransform getter is unsafe pre-init), `innerSize` driven by
+`flex.onLayoutComplete`, and the editor-hint copy is buffered because the main
+script's OnStart can race the frame's init. "FLARB LLC" caption added
+bottom-right (flexRow justify-End). Compiled first-try; verified by yawing the
+preview camera 120° with MovePreviewCamera — panel chased into the new view,
+billboarded, credit intact.

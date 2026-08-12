@@ -22,6 +22,7 @@ import {
   FlexAlign, FlexDirection, FlexJustify,
 } from "SpectaclesUIKit.lspkg/Scripts/Components/Layout2D/Flex/FlexTypes"
 import {BackPlate} from "SpectaclesUIKit.lspkg/Scripts/BackPlate"
+import {Frame} from "SpectaclesUIKit.lspkg/Scripts/Components/Frame/Frame"
 import {Button} from "SpectaclesUIKit.lspkg/Scripts/Components/Button/Button"
 import {Billboard} from "SpectaclesInteractionKit.lspkg/Components/Interaction/Billboard/Billboard"
 import Event, {PublicApi} from "SpectaclesInteractionKit.lspkg/Utils/Event"
@@ -108,6 +109,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private listeningText: Text | null = null
   private transcriptText: Text | null = null
   private hintText: Text | null = null
+  private pendingHint: string | null = null
   private statusText: Text | null = null
   private comingSoonClear!: DelayedCallbackEvent
 
@@ -153,6 +155,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
   /** Replace the first-run hint copy (editor vs device affordances differ). */
   setHintText(t: string): void {
+    this.pendingHint = t   // buffered — the modal builds lazily inside Frame init
     if (this.hintText) this.hintText.text = t
   }
 
@@ -224,18 +227,37 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.modalRoot = this.obj(this.sceneObject, "StartModal", new vec3(0, 2, 0))
     this.realPos["modal"] = new vec3(0, 2, 0)
     this.modalRoot.createComponent("Component.Canvas")
-    const plate = this.modalRoot.createComponent(BackPlate.getTypeName()) as BackPlate
-    plate.style = "dark"   // STYLE.md: panels 92-96% opacity, Palace-indigo dark
+    // Follow panel (UIKit Frame): billboards + lazily follows the user like a
+    // standard Specs system panel. Content builds under contentTransform inside
+    // onInitialized (ReplayEvent) — contentTransform is unsafe pre-init.
+    const frame = this.modalRoot.createComponent(Frame.getTypeName()) as Frame
+    frame.autoShowHide = false
+    frame.autoScaleContent = false
+    frame.allowScaling = false
 
-    const content = this.obj(this.modalRoot, "Content", new vec3(0, 0, 0.6))
-    const col = this.flexColumn(content, MODAL_W, -1, {
-      gap: 0.9, padX: 1.6, padY: 1.6,
-      justify: FlexJustify.Start, align: FlexAlign.Center,
+    frame.onInitialized.add(() => {
+      frame.showCloseButton = false   // closing the main menu would strand the user
+      frame.showFollowButton = false  // always-follow, no toggle
+      frame.setUseFollow(true)
+      frame.setFollowing(true)
+
+      const host = frame.contentTransform.getSceneObject()
+      const content = this.obj(host, "Content", new vec3(0, 0, 0.6))
+      const col = this.flexColumn(content, MODAL_W, -1, {
+        gap: 0.9, padX: 1.6, padY: 1.6,
+        justify: FlexJustify.Start, align: FlexAlign.Center,
+      })
+      const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
+      flex.onLayoutComplete.add((r) => {
+        frame.innerSize = new vec2(r.containerWidth, r.containerHeight)
+      })
+      this.buildModalContent(col)
+      // Hint copy may have been pushed before the frame initialized — apply now.
+      if (this.pendingHint !== null && this.hintText) this.hintText.text = this.pendingHint
     })
-    const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
-    flex.onLayoutComplete.add((r) => {
-      plate.size = new vec2(r.containerWidth, r.containerHeight)
-    })
+  }
+
+  private buildModalContent(col: SceneObject): void {
 
     // Keystone lockup — graphic-only texture (SVG <text> did not survive
     // conversion; wordmark rendered as UIKit text below, per DESIGN.md).
@@ -278,6 +300,16 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.flexChild(col, {w: 22, h: 1.3}, (c) => {
       this.comingSoonText = this.textIn(c, "", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEAL,
+      })
+    })
+
+    // Studio credit, bottom right.
+    this.flexChild(col, {w: 22, h: 1.1}, (c) => {
+      const row = this.flexRow(c, 22, 1.1, {justify: FlexJustify.End, align: FlexAlign.Center})
+      this.flexChild(row, {w: 6, h: 1.1}, (cc) => {
+        this.textIn(cc, "FLARB LLC", "Caption", {
+          font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
+        })
       })
     })
   }
