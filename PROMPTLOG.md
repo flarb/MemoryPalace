@@ -1,5 +1,37 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, later afternoon — Train mode v1 (recall quiz), on a shoestring
+
+**Prompt:** "ok can we build train mode with what little usage we have left?
+My fable usage resets tomorrow but I wonder if we can squeak by with a 1st
+pass at train mode?"
+
+**Increment:** the Train button goes live. New `TrainController.ts` +
+`TRAIN` state: journey v1 = the active palace in capture order; every
+locus hides as a bare glow (Explore's glint rendering, auto-resolve off,
+gaze reveal excluded — no answer leaks); the current target pings
+positionally (twinkle.wav reused — spatial wayfinding); within 260 cm the
+prompt card blooms ("What lives here?" → Reveal, or pinch the gem when
+it's tangible); reveal obeys the **vanishing interface** by mastery
+(0 gem+words · 1 gem only · 2+ bare glow; blurred-snapshot tier deferred —
+no 2D snapshots yet); self-grade Remembered/Almost/Forgot (muted, never
+punishing) walks the mastery ladder ±1 clamped 0–3, persisted per grade
+(PalaceStore `mastery`, schema-safe on old saves); completion toast
+"Route complete — X/N remembered" → modal. Chip-only sigil exits, as in
+Explore.
+
+**Budget craft (the actual story):** usage nearly gone, so instead of a
+fresh builder re-reading the codebase (~375k tokens for Explore), the
+*same* builder agent was resumed with its context intact and a
+pre-scoped brief: explicit cut list, no asset generation, verification
+capped. It finished in 34 tool calls (vs 124), cut only grade SFX, and
+proved the ladder organically: three quiz cycles across lens resets —
+mastery 0→1→2 shown as words→gem→glow, forgot-floor 0→0, reload
+masteries `2,0`. Orchestrator re-verified compile + clean boot, then
+committed. Deferred honestly: grade SFX, blurred-snapshot tier,
+pinch-reveal on bare-glow targets (button-only at mastery ≥2), journey
+editing, encoding walk.
+
 ## Wed Aug 12, afternoon — Explore mode (walk your palace)
 
 **Prompt:** "Ok, let's build 'explore' mode"

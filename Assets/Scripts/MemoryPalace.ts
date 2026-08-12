@@ -29,6 +29,7 @@ import { SigilController } from "./SigilController";
 import { ReticleController } from "./ReticleController";
 import { GemFactory } from "./GemFactory";
 import { ExploreController } from "./ExploreController";
+import { TrainController } from "./TrainController";
 import { AsrController } from "./AsrController";
 import {
   PalaceStore, Palace, MemoryRecord,
@@ -58,7 +59,7 @@ const GAZE_DWELL_S = 0.8;                       // hold before the label blooms
 const GAZE_GRACE_S = 1.2;                       // label lingers after gaze leaves
 const GAZE_LABEL_LIFT = 11;                     // cm above the gem
 
-type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING" | "EXPLORE";
+type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING" | "EXPLORE" | "TRAIN";
 
 @component
 export class MemoryPalace extends BaseScriptComponent {
@@ -81,6 +82,8 @@ export class MemoryPalace extends BaseScriptComponent {
   private enhancer = new EnhanceService();
   private enhanceMeshMat!: Material;
   private explore!: ExploreController;
+  private train!: TrainController;
+  private trainRemembered = 0;
   private palace: Palace | null = null;
   private selectedMemoryId: string | null = null;
   private lastPalaceId: string | null = null;   // "active" palace for Explore
@@ -129,14 +132,17 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
       this.uiHud.onGazeSpeak.add(() => this.speakGazedMemory());
       this.uiHud.onExplore.add(() => this.onExplore());
-      // Train: the UI still shows its own coming-soon hint (deferred).
+      this.uiHud.onTrain.add(() => this.onTrain());
+      this.uiHud.onTrainReveal.add(() => this.revealCurrentLocus());
+      this.uiHud.onTrainGrade.add((delta: number) => this.onTrainGrade(delta));
 
       // Sigil cluster (SIK subscriptions bind in OnStart).
       this.sigil.start();
       this.sigil.onTapped.add(() => this.startWizard());
       this.sigil.onDoneTapped.add(() => {
-        // The chip is the modal-summon affordance in both modes.
+        // The chip is the modal-summon affordance in every mode.
         if (this.state === "EXPLORE") this.exitExplore();
+        else if (this.state === "TRAIN") this.exitTrain();
         else this.finishSession();
       });
 
@@ -172,6 +178,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.reticle = new ReticleController(root, ringMat, glowMat);
     this.gems = new GemFactory(root, BRAND_MAT);
     this.explore = new ExploreController(root, this.gems, this.enhancer);
+    this.train = new TrainController(this.gems);
 
     // Plain (non-additive) vertex-color clone for Snap3D GLBs — pairs with
     // use_vertex_color; never pass null to the gltf loader (editor crash).
@@ -320,6 +327,147 @@ export class MemoryPalace extends BaseScriptComponent {
     this.setState("MODAL");
   }
 
+  // ── Train mode v1 (recall quiz over the active palace, capture order) ──────
+
+  private onTrain(): void {
+    if (this.state !== "MODAL") return;
+    let loaded: Palace | null = null;
+    if (this.lastPalaceId !== null) loaded = this.store.load(this.lastPalaceId);
+    if (loaded === null) {
+      const list = this.store.listPalaces();
+      if (list.length > 0) loaded = this.store.load(list[0].id);
+    }
+    if (loaded === null) {
+      this.uiHud.showToast("Nothing to train yet — press New first");
+      return;
+    }
+    if (loaded.memories.length === 0) {
+      this.uiHud.showToast("\"" + loaded.name + "\" has no memories yet");
+      return;
+    }
+    this.palace = loaded;
+    this.lastPalaceId = loaded.id;
+    this.trainRemembered = 0;
+    for (const rec of loaded.memories) {
+      // Quiz: every locus starts hidden as a bare glow (no enhance regen —
+      // conjured visuals would be hidden anyway and RSG tokens are precious).
+      this.spawnMemoryGem(rec);
+      this.gems.setResolved(rec.id, false);
+    }
+    this.uiHud.hideModal();
+    this.sigil.setChipOnly(true);   // Done chip = the way home; no edit affordances
+    this.sigil.setActive(true);
+    this.train.begin(loaded.memories, (memoryId) => this.trainPromptFor(memoryId));
+    this.setState("TRAIN");
+    this.flash("Training \"" + loaded.name + "\" — follow the ping",
+      this.camera.getForwardPosition(100, false));
+    print("MemoryPalace: training \"" + loaded.name + "\" (" +
+      loaded.memories.length + " loci)");
+  }
+
+  /** Arrived at the target locus: pre-reveal presentation per mastery tier. */
+  private trainPromptFor(memoryId: string): void {
+    if (this.state !== "TRAIN" || this.palace === null) return;
+    let rec: MemoryRecord | null = null;
+    for (const m of this.palace.memories) {
+      if (m.id === memoryId) { rec = m; break; }
+    }
+    if (rec === null) return;
+    const mastery = rec.mastery !== undefined ? rec.mastery : 0;
+    // Vanishing interface v1: Learn (0) = gem + words, Practice (1) = gem only,
+    // Recall+ (2–3) = bare glow. (Blurred-snapshot tier deferred — 2D snapshots
+    // don't exist in the capture pipeline yet.)
+    if (mastery <= 1) this.gems.setResolved(memoryId, true);
+    if (mastery === 0) this.showTrainLabel(rec);
+    const pose = this.memCardPose(fromStoredVec3(rec.position));
+    this.uiHud.showTrainPrompt(pose.pos, pose.rot);
+    print("MemoryPalace: train prompt \"" + rec.transcript + "\" (mastery " + mastery + ")");
+  }
+
+  /** Reveal button (or a pinch on the target gem when it's tangible). */
+  private revealCurrentLocus(): void {
+    if (this.state !== "TRAIN" || this.palace === null) return;
+    if (!this.train.markRevealed()) return;   // only mid-prompt
+    const cur = this.train.current();
+    if (cur === null) return;
+    let rec: MemoryRecord | null = null;
+    for (const m of this.palace.memories) {
+      if (m.id === cur.memoryId) { rec = m; break; }
+    }
+    if (rec === null) return;
+    this.gems.setResolved(rec.id, true);
+    this.showTrainLabel(rec);   // words + speaker button (TTS falls back silent)
+    const pose = this.memCardPose(fromStoredVec3(rec.position));
+    this.uiHud.showTrainGrade(rec.transcript, pose.pos, pose.rot);
+    print("MemoryPalace: train reveal \"" + rec.transcript + "\"");
+  }
+
+  /** Self-grade: Remembered +1 / Almost 0 / Forgot −1 (mastery 0–3, persisted). */
+  private onTrainGrade(delta: number): void {
+    if (this.state !== "TRAIN" || this.palace === null) return;
+    const cur = this.train.current();
+    if (cur === null) return;
+    for (const m of this.palace.memories) {
+      if (m.id !== cur.memoryId) continue;
+      const before = m.mastery !== undefined ? m.mastery : 0;
+      m.mastery = Math.max(0, Math.min(3, before + delta));
+      print("MemoryPalace: mastery \"" + m.transcript + "\" " + before + " → " +
+        m.mastery + (delta > 0 ? " (remembered)" : delta < 0 ? " (forgot)" : " (almost)"));
+      break;
+    }
+    if (delta > 0) this.trainRemembered++;
+    this.store.save(this.palace);   // mastery persists with the palace
+    this.uiHud.hideMemoryCard();
+    this.uiHud.hideGazeLabel();
+    if (this.train.advance()) {
+      this.flash("Next locus — follow the ping",
+        this.camera.getForwardPosition(80, false));
+    } else {
+      const msg = "Route complete — " + this.trainRemembered + "/" +
+        this.palace.memories.length + " remembered";
+      this.exitTrain();
+      this.uiHud.showToast(msg);
+      print("MemoryPalace: " + msg);
+    }
+  }
+
+  /** Done chip during TRAIN: mastery already saved per grade — walk home. */
+  private exitTrain(): void {
+    if (this.state !== "TRAIN") return;
+    this.train.end();
+    this.uiHud.hideMemoryCard();
+    this.uiHud.hideGazeLabel();
+    this.gems.despawnAll();
+    this.uiHud.hideSigilLabel();
+    this.uiHud.hideDoneLabel();
+    this.uiHud.hideStatus();
+    this.flashRemaining = 0;
+    this.sigil.setActive(false);
+    this.sigil.setChipOnly(false);
+    this.palace = null;
+    this.uiHud.showModal();
+    this.setState("MODAL");
+  }
+
+  /** The memory's words above its gem (reuses the gaze label + speaker). */
+  private showTrainLabel(rec: MemoryRecord): void {
+    const p = fromStoredVec3(rec.position);
+    this.uiHud.setGazeLabelText(rec.transcript);
+    this.uiHud.showGazeLabel();
+    this.uiHud.setGazeLabelPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT, p.z));
+  }
+
+  /** Card pose above a gem, pulled toward the viewer (memory-card convention). */
+  private memCardPose(base: vec3): { pos: vec3; rot: quat } {
+    const camPos = this.camera.getWorldPosition();
+    const toGem = camPos.sub(base);
+    const dir = toGem.length > 1 ? toGem.normalize() : vec3.forward();
+    const pos = new vec3(base.x, base.y + MEMCARD_LIFT, base.z).add(dir.uniformScale(MEMCARD_PULL));
+    const toCam = camPos.sub(pos).normalize();
+    const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
+    return { pos: pos, rot: quat.lookAt(toCam, upRef) };
+  }
+
   // ── Wizard flow ────────────────────────────────────────────────────────────
 
   private startWizard(): void {
@@ -418,6 +566,13 @@ export class MemoryPalace extends BaseScriptComponent {
   }
 
   private onGemSelected(memoryId: string): void {
+    if (this.state === "TRAIN") {
+      // Pinching the target gem = Reveal (reachable when the pre-reveal
+      // presentation made the gem tangible — mastery ≤ 1).
+      const cur = this.train.current();
+      if (cur !== null && cur.memoryId === memoryId) this.revealCurrentLocus();
+      return;
+    }
     if ((this.state !== "SESSION" && this.state !== "EXPLORE") || this.palace === null) return;
     let rec: MemoryRecord | null = null;
     for (const m of this.palace.memories) {
@@ -627,10 +782,19 @@ export class MemoryPalace extends BaseScriptComponent {
     }
   }
 
-  /** Speaker button on the gaze label: the palace reads the memory aloud. */
+  /** Speaker button on the gaze label: the palace reads the memory aloud.
+   *  In TRAIN the label is driven manually — speak the current locus instead. */
   private speakGazedMemory(): void {
-    if (this.palace === null || this.gazeTargetId === null || !this.gazeRevealed) return;
-    const id = this.gazeTargetId;
+    if (this.palace === null) return;
+    let id: string;
+    if (this.state === "TRAIN") {
+      const cur = this.train.current();
+      if (cur === null) return;
+      id = cur.memoryId;
+    } else {
+      if (this.gazeTargetId === null || !this.gazeRevealed) return;
+      id = this.gazeTargetId;
+    }
     let transcript = "";
     for (const m of this.palace.memories) {
       if (m.id === id) { transcript = m.transcript; break; }
@@ -713,6 +877,11 @@ export class MemoryPalace extends BaseScriptComponent {
     if (this.state === "EXPLORE") {
       this.explore.setSuppressed(this.selectedMemoryId !== null);
       this.explore.update(dt, camPos);
+    }
+
+    // Train: target pings + arrival detection.
+    if (this.state === "TRAIN") {
+      this.train.update(dt, camPos);
     }
 
     // Status flash countdown (AIMING owns the status line exclusively).

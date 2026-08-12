@@ -40,6 +40,8 @@ export interface MemoryRecord {
   position: StoredVec3;
   surfaceNormal?: StoredVec3;
   createdAt: number;
+  /** Recall mastery 0–3 (Train self-grades); absent on old saves = 0. */
+  mastery?: number;
   /** Conjured imagery request — regenerated lazily on palace load. */
   enhance?: EnhanceSpec;
 }

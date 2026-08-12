@@ -126,6 +126,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   get onCardEnhanceRemove(): PublicApi<void> { return this._onCardEnhanceRemove.publicApi() }
   private _onGazeSpeak = new Event<void>()
   get onGazeSpeak(): PublicApi<void> { return this._onGazeSpeak.publicApi() }
+  private _onTrainReveal = new Event<void>()
+  get onTrainReveal(): PublicApi<void> { return this._onTrainReveal.publicApi() }
+  private _onTrainGrade = new Event<number>()
+  get onTrainGrade(): PublicApi<number> { return this._onTrainGrade.publicApi() }
 
   // ── Panel roots + state ────────────────────────────────────────────────────
   private modalRoot!: SceneObject
@@ -140,6 +144,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardEnhanceRow: SceneObject | null = null
   private memCardRemoveRow: SceneObject | null = null
   private memCardReadOnlyRow: SceneObject | null = null
+  private memCardPromptRow: SceneObject | null = null
+  private memCardGradeRow: SceneObject | null = null
   private cardHasEnhance = false
   private realPos: {[name: string]: vec3} = {}
 
@@ -330,6 +336,35 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   }
   hideMemoryCard(): void { this.wantMemCard = false; this.applyVisibility() }
 
+  /** Train: "What lives here?" + Reveal, posed like the memory card. */
+  showTrainPrompt(worldPos: vec3, worldRot: quat): void {
+    this.setMemCardMode("prompt")
+    if (this.memCardText) this.memCardText.text = "What lives here?"
+    this.wantMemCard = true
+    if (this.initDone) {
+      const t = this.memCardRoot.getTransform()
+      t.setWorldPosition(worldPos)
+      t.setWorldRotation(worldRot)
+    }
+    this.applyVisibility()
+  }
+
+  /** Train: the revealed memory + self-grade row (Remembered / Almost / Forgot). */
+  showTrainGrade(transcript: string, worldPos: vec3, worldRot: quat): void {
+    this.setMemCardMode("grade")
+    if (this.memCardText) {
+      const MAX = 140
+      this.memCardText.text = transcript.length > MAX ? transcript.slice(0, MAX) + "…" : transcript
+    }
+    this.wantMemCard = true
+    if (this.initDone) {
+      const t = this.memCardRoot.getTransform()
+      t.setWorldPosition(worldPos)
+      t.setWorldRotation(worldRot)
+    }
+    this.applyVisibility()
+  }
+
   showSigilLabel(): void { this.wantLabel = true; this.applyVisibility() }
   hideSigilLabel(): void { this.wantLabel = false; this.applyVisibility() }
 
@@ -359,6 +394,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = false
     if (this.memCardRemoveRow !== null) this.memCardRemoveRow.enabled = false
     if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = false
+    if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = false
+    if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = false
     this.applyVisibility()
   }
 
@@ -480,10 +517,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.addModalButton(col, "New", ICON_NEW, () => this._onCreate.invoke())
     this.addModalButton(col, "Load", ICON_LOAD, () => this._onEditRequested.invoke())
     this.addModalButton(col, "Explore", ICON_EXPLORE, () => this._onExplore.invoke())
-    this.addModalButton(col, "Train", ICON_TRAIN, () => {
-      this.showComingSoon("Train")
-      this._onTrain.invoke()
-    })
+    this.addModalButton(col, "Train", ICON_TRAIN, () => this._onTrain.invoke())
 
     // First-run hint (Snap hand-menu guideline: users won't find hand UI unaided).
     this.flexChild(col, {w: 22, h: 1.5}, (c) => {
@@ -714,16 +748,36 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
       this.rowButton(row, "Close", 6.2, COL_TEXT, () => this._onCardClose.invoke())
     })
+
+    // Train prompt row: the recall question's single affordance.
+    this.memCardPromptRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
+      const row = this.flexRow(c, 21, 3, {
+        justify: FlexJustify.Center, align: FlexAlign.Center,
+      })
+      this.rowButton(row, "Reveal", 7.5, COL_TEAL, () => this._onTrainReveal.invoke())
+    })
+
+    // Train grade row: self-grading, never punishing (Forgot is muted, not rose).
+    this.memCardGradeRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
+      const row = this.flexRow(c, 21, 3, {
+        justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.7,
+      })
+      this.rowButton(row, "Remembered", 8.6, COL_TEAL, () => this._onTrainGrade.invoke(1))
+      this.rowButton(row, "Almost", 5.6, COL_TEXT, () => this._onTrainGrade.invoke(0))
+      this.rowButton(row, "Forgot", 5.2, COL_MUTED, () => this._onTrainGrade.invoke(-1))
+    })
   }
 
-  /** Swap the memory card between its action rows (edit / conjure / read-only). */
-  private setMemCardMode(mode: "main" | "enhance" | "readonly"): void {
+  /** Swap the memory card between its action rows (edit / conjure / read-only / train). */
+  private setMemCardMode(mode: "main" | "enhance" | "readonly" | "prompt" | "grade"): void {
     if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
     if (this.memCardRemoveRow !== null) {
       this.memCardRemoveRow.enabled = mode === "enhance" && this.cardHasEnhance
     }
     if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = mode === "readonly"
+    if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = mode === "prompt"
+    if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = mode === "grade"
   }
 
   /** Button inside an existing flex row (memory card actions). */
