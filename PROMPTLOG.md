@@ -1,5 +1,31 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12 — Vaporize delete effect (first juice + first SFX)
+
+**Prompt:** "When we delete a memory can you give it a cool effect? Like punch
+scale the geometry out and give it some kind of VFX particle blast that fades
+out as the object shrinks… and a cool representative sound effect… new age and
+magical, almost like it blowing off into vapor."
+
+**Increment:**
+- `GemFactory.vaporize()`: ease-out punch to 1.35× (0.12 s) → ease-in cubic
+  shrink to zero (0.55 s) with a quadratic spin-up and gentle rise — the memory
+  "unwinds"; interaction pieces destroyed instantly so dying gems can't be
+  re-selected.
+- Procedural vapor burst: 14 additive violet/teal discs, upward-biased random
+  velocities, drag + buoyancy, scale-to-zero (additive = natural fade). Zero
+  new art assets — same code-authored mesh family as everything else.
+- First generated SFX via /build-sfx (seeds the arcana audio palette):
+  A-pentatonic crystal bells (A5/D6/E6, suspended — no third) releasing into a
+  downward 6.5 kHz→400 Hz vapor whoosh + granular shimmer dust, plate reverb,
+  3.1 s with tail. Played positionally at the gem, `Audio.PlaybackMode.LowLatency`
+  per the sound-design rules. Generator script committed at
+  tempAssetGen/gen_sfx_vaporize.js (regenerable).
+- Verified by driving the real path: Edit → pick palace → select restored gem →
+  Delete → log shows `deleted … (0 remain)` + auto-save + **`[AudioPlayer] Open
+  audio file: …/vaporize.wav`** at the moment of deletion; zero errors from the
+  new per-frame loops; puffs/dying/SFX hosts all self-cleaned (leak query empty).
+
 ## Wed Aug 12 — Verification completed + Edit icon
 
 **Prompt:** "restarted. BTW the edit button needs an icon"

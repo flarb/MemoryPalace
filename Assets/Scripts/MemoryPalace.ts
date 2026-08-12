@@ -323,7 +323,7 @@ export class MemoryPalace extends BaseScriptComponent {
     for (const m of this.palace.memories) {
       if (m.id === id) { deletedPos = fromStoredVec3(m.position); break; }
     }
-    this.gems.despawn(id);
+    this.gems.vaporize(id);   // punch-out + vapor burst + SFX (delete effect)
     this.palace.memories = this.palace.memories.filter((m) => m.id !== id);
     this.store.save(this.palace);   // auto-save after every delete
     this.closeMemoryCard();
