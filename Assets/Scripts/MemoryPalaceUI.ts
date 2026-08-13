@@ -112,6 +112,10 @@ const VFOLLOW_TILT_UP = 25    // UIKit defaults — mirror, don't exceed
 const VFOLLOW_TILT_DOWN = 35
 const VFOLLOW_MAX_ELEV = 38   // stay inside SmoothFollow's ±40 clamp band
 
+// ── Gaze-label speaker: TTS loading pulse ────────────────────────────────────
+const SPEAK_ICON_S = 1.8    // cm — icon rest scale (also the imageIn size)
+const SPEAK_PULSE_HZ = 2.0  // gentle breathe while the speech round-trip runs
+
 // ── Layout constants ─────────────────────────────────────────────────────────
 const LAYOUT_Z_LIFT = 0.02
 const BUTTON_LABEL_Z = 0.08
@@ -258,6 +262,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private statusPlate: BackPlate | null = null
   private modalDragging = false
   private vAssistActive = false
+  private speakerFace: SceneObject | null = null
+  private speakerImg: Image | null = null
+  private speakerLoading = false
+  private speakerPulseT = 0
   private memCardText: Text | null = null
   private comingSoonClear!: DelayedCallbackEvent
 
@@ -273,7 +281,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.comingSoonClear = this.createEvent("DelayedCallbackEvent") as DelayedCallbackEvent
     this.comingSoonClear.bind(() => { if (this.comingSoonText) this.comingSoonText.text = "" })
 
-    this.createEvent("UpdateEvent").bind(() => this.updateModalVerticalAssist())
+    this.createEvent("UpdateEvent").bind(() => {
+      this.updateModalVerticalAssist()
+      this.updateSpeakerPulse()
+    })
 
     // BackPlate (and every UIKit Element) initializes on OnStartEvent — a
     // SceneObject disabled before start never initializes (G3). So hidden
@@ -1097,7 +1108,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         const btn = host.createComponent(Button.getTypeName()) as Button
         btn.size = new vec3(2.8, 2.8, 1)   // BEFORE init
         const face = this.obj(host, "Face", new vec3(0, 0, BUTTON_LABEL_Z))
-        this.imageIn(face, ICON_SPEAK, 1.8, 1.8, COL_TEAL)
+        this.imageIn(face, ICON_SPEAK, SPEAK_ICON_S, SPEAK_ICON_S, COL_TEAL)
+        this.speakerFace = face
+        this.speakerImg = face.getComponent("Component.Image") as Image
         btn.onTriggerUp.add(() => this._onGazeSpeak.invoke())
       })
       this.flexChild(row, {w: 13, h: 3.4}, (c2) => {
@@ -1134,6 +1147,39 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         wrap: {w: STATUS_WRAP_W, h: STATUS_LINE_H},
       })
     })
+  }
+
+  // ── Gaze-label speaker loading pulse ───────────────────────────────────────
+
+  /** Breathe the speaker icon while a TTS fetch is in flight. */
+  setSpeakerLoading(on: boolean): void {
+    if (this.speakerLoading === on) return
+    this.speakerLoading = on
+    this.speakerPulseT = 0
+    if (!on) this.resetSpeakerVisual()
+  }
+
+  private resetSpeakerVisual(): void {
+    if (this.speakerFace !== null) {
+      this.speakerFace.getTransform().setLocalScale(new vec3(SPEAK_ICON_S, SPEAK_ICON_S, 1))
+    }
+    if (this.speakerImg !== null) {
+      const c = this.speakerImg.mainPass.baseColor
+      this.speakerImg.mainPass.baseColor = new vec4(c.x, c.y, c.z, 1)
+    }
+  }
+
+  private updateSpeakerPulse(): void {
+    if (!this.speakerLoading || this.speakerFace === null) return
+    this.speakerPulseT += getDeltaTime()
+    const wave = Math.sin(this.speakerPulseT * SPEAK_PULSE_HZ * 2 * Math.PI)
+    const s = SPEAK_ICON_S * (1 + 0.16 * wave)
+    this.speakerFace.getTransform().setLocalScale(new vec3(s, s, 1))
+    if (this.speakerImg !== null) {
+      const a = 0.65 + 0.35 * (0.5 + 0.5 * wave)
+      const c = this.speakerImg.mainPass.baseColor
+      this.speakerImg.mainPass.baseColor = new vec4(c.x, c.y, c.z, a)
+    }
   }
 
   // ── Modal vertical follow assist (see VFOLLOW_* constants) ────────────────

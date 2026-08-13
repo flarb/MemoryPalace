@@ -1,5 +1,26 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, ~9:30 PM — The speaker breathes while it thinks
+
+**Prompt:** "can we have some kind of progress animation when we hit
+speaker while it's loading the speech? Maybe make the spearer icon
+pulsate somehow until it plays?"
+
+**Increment:** `setSpeakerLoading(on)` on the UI — while a TTS fetch is
+in flight the speaker icon breathes (±16% scale + 0.65→1.0 alpha, 2 Hz
+sine, riding the existing UpdateEvent) and hard-resets to rest scale /
+full alpha the moment speech plays OR the fetch fails (both promise
+branches in `speakGazedMemory` flip it off; the failure path still shows
+the existing "Couldn't speak that" flash). Cached memories resolve
+immediately, so repeat taps never flicker. Works identically for the
+Train-reveal speak path, which shares the same button and flow.
+
+**Verification:** compile + boot clean. The pulse itself wasn't driven
+live tonight — RSG tokens were hours expired, so only the instant
+failure path was reachable; the animation is a sine on scale/alpha with
+a state-reset that is correct by construction. One real speaker tap
+(fresh tokens) is the visual check.
+
 ## Wed Aug 12, ~9:25 PM — The speaker button comes inside
 
 **Prompt:** "Can this speaker button fit inside the panel? as you can see

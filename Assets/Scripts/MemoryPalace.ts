@@ -968,12 +968,17 @@ export class MemoryPalace extends BaseScriptComponent {
     }
     if (transcript.length === 0) return;
     print("MemoryPalace: speaking \"" + transcript + "\"");
+    // Pulse the speaker icon while the TTS round-trip is in flight (cached
+    // memories resolve immediately — the pulse never gets a visible frame).
+    this.uiHud.setSpeakerLoading(true);
     this.enhancer.generateSpeech(id, transcript)
       .then((track) => {
+        this.uiHud.setSpeakerLoading(false);
         const p = this.gems.basePosition(id);
         this.gems.playTrackAt(track, p !== null ? p : this.camera.getWorldPosition(), 0.85);
       })
       .catch((msg) => {
+        this.uiHud.setSpeakerLoading(false);
         print("MemoryPalace: speak failed — " + msg);
         this.flash("Couldn't speak that — try again", this.gems.basePosition(id));
       });
