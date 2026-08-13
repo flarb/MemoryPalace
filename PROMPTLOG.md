@@ -1,5 +1,25 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, ~9:25 PM — The speaker button comes inside
+
+**Prompt:** "Can this speaker button fit inside the panel? as you can see
+it's kind of floating on top of and outside of it" (screenshot: gaze
+label, speaker chip hanging off the plate's top-left corner)
+
+**Increment:** size disagreement in buildGazeLabel — the BackPlate hugs
+the outer flex column (width 15) but the row inside carries speaker 2.8 +
+gap 0.6 + text 13 in a 17-wide slot, needing 18.8 with padding: the
+overflow pushed the chip out of the plate. Column widened to 19 (the slot
++ 2×padX, now documented in-line). Audited every other hugged plate for
+the same class: transcript/memory cards, sigil and Done labels all
+consistent (Done is exact at 5.0); only the gaze label disagreed.
+
+**Verification:** drove Load → "Palace 1" (leftover harness palace) into
+a session, aimed the camera at its gem from 150 cm, let the 0.8 s dwell
+fire — capture shows the same "buy milk for Thursday" label as the
+user's screenshot with the speaker chip INSIDE the plate, left of the
+text, vertically centered. Compile + boot clean.
+
 ## Wed Aug 12, ~9:20 PM — Status pills clear the gaze label
 
 **Prompt:** "the 'memory placed' panel is overlapped by the text label on

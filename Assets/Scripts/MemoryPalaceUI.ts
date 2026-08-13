@@ -1078,7 +1078,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.gazeLabelRoot.createComponent(Billboard.getTypeName())
 
     const content = this.obj(this.gazeLabelRoot, "Content", new vec3(0, 0, 0.6))
-    const col = this.flexColumn(content, 15, -1, {
+    // 19 = the 17-wide speaker+text row slot + 2×padX — the plate hugs this
+    // column, so a narrower width spills the speaker chip outside the plate.
+    const col = this.flexColumn(content, 19, -1, {
       gap: 0, padX: 0.9, padY: 0.55,
       justify: FlexJustify.Center, align: FlexAlign.Center,
     })
