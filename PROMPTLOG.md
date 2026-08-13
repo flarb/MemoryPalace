@@ -1,5 +1,21 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, ~9:20 PM — Status pills clear the gaze label
+
+**Prompt:** "the 'memory placed' panel is overlapped by the text label on
+the memory. Can you fix that positioning? The sounds are great, BTW"
+(solfeggio palette: user-approved ✓)
+
+**Increment:** guaranteed collision — the "Memory placed (N)" pill
+anchored at gem +12 cm while the gaze-reveal label blooms at +11, and you
+are always gazing at the gem you just placed, so the label rose straight
+into the pill. All three gem-anchored flash sites (placement, conjuring,
+enhancement-removed — same +12 pattern) now use `FLASH_GEM_LIFT = 26`,
+clearing the label plate + bob with ~9 cm of air while staying visually
+attached to the gem. Compile + boot clean; geometry is deterministic
+(pill bottom ≈ +23 vs label top ≈ +14) — one-glance user check on the
+next placement.
+
 ## Wed Aug 12, later still — The palace retunes itself (solfeggio audio)
 
 **Prompt:** "ok let's do the audio polish. I think we should aim for

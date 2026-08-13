@@ -78,6 +78,7 @@ const GAZE_RANGE = 500;                         // cm — gaze reveal reach
 const GAZE_DWELL_S = 0.8;                       // hold before the label blooms
 const GAZE_GRACE_S = 1.2;                       // label lingers after gaze leaves
 const GAZE_LABEL_LIFT = 11;                     // cm above the gem
+const FLASH_GEM_LIFT = 26;                      // cm above a gem — status pills must clear the gaze label at +11 (plate + bob)
 
 type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING" | "EXPLORE" | "TRAIN";
 
@@ -607,7 +608,7 @@ export class MemoryPalace extends BaseScriptComponent {
       print("MemoryPalace: captured \"" + transcript + "\" (" +
         this.palace.memories.length + " memories in " + this.palace.name + ")");
       flashText = "Memory placed (" + this.palace.memories.length + ")";
-      flashPos = new vec3(gemPos.x, gemPos.y + 12, gemPos.z);
+      flashPos = new vec3(gemPos.x, gemPos.y + FLASH_GEM_LIFT, gemPos.z);
     } else {
       print("MemoryPalace: capture cancelled (empty transcript)");
     }
@@ -796,7 +797,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.closeMemoryCard();
     const p = this.gems.basePosition(id);
     this.flash("Enhancement removed",
-      p !== null ? new vec3(p.x, p.y + 12, p.z) : null);
+      p !== null ? new vec3(p.x, p.y + FLASH_GEM_LIFT, p.z) : null);
     print("MemoryPalace: enhancement removed for " + id);
   }
 
@@ -805,7 +806,7 @@ export class MemoryPalace extends BaseScriptComponent {
     if (rec.enhance === undefined) return;
     const flashAt = (): vec3 | null => {
       const p = this.gems.basePosition(rec.id);
-      return p !== null ? new vec3(p.x, p.y + 12, p.z) : null;
+      return p !== null ? new vec3(p.x, p.y + FLASH_GEM_LIFT, p.z) : null;
     };
     if (!quiet) {
       this.flash(rec.enhance.kind === "mesh" ? "Conjuring object…" : "Conjuring image…", flashAt());
