@@ -1,5 +1,46 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, night — Button tooltips + the "?" help view
+
+**Prompt:** "make that line display what each button does as you
+highlight it… If no button on the main menu is highlighted then there's
+no text… Basically a tooltip. Also in the lower left corner let's have a
+small circular help button with a ? icon… brings up a help menu… X button
+active in the upper left hand corner… title bar says INSTRUCTIONS and the
+body text will explain what the app does and its modes. I can be a
+scrollable text field."
+
+**Increment:**
+- **Tooltips**: the modal hint line is now a hover tooltip slot — empty
+  when idle, per-button copy on hover (New "Press New to start a palace",
+  Load "Load and edit an existing palace", Explore "Walk your palace and
+  relive its memories", Train "Quiz your recall, locus by locus", help
+  chip "How Memory Palace works"). Wired via UIKit Element's public
+  onHoverEnter/onHoverExit on each Button; cleared on view swaps (hover
+  exit doesn't fire across a swap). The old always-on first-run hint and
+  its editor-mode override are retired.
+- **Help**: teal circular "?" chip lower-left (Material question_mark via
+  IconSelector, paired with the FLARB credit in a SpaceBetween row) opens
+  a third modal view — X button upper-left (Material close) back to main,
+  tracked-out INSTRUCTIONS title, and body copy covering the app + all
+  four modes, one flex row per paragraph, left-aligned.
+- **ScrollWindow post-mortem (honest)**: the scrollable-field version was
+  built first — UIKit ScrollWindow masks correctly once you size
+  `windowSize`, and the fade-mask ghosting over the title traced to an
+  under-estimated content height — but its pinch-drag scroll input loses
+  to the Frame's whole-panel InteractionPlane (the drag grabs the panel
+  move affordance instead; a bare Text also needs a collider before
+  ScrollWindow will even hit-test it). Parked scroll; the full text fits
+  a taller panel today ("can be scrollable" read as permissive). Revisit
+  only if the copy outgrows the panel.
+
+**Verification:** synthetic hand was flaky again, so the whole loop ran
+on the editor's real mouse-interactor path via injected preview taps:
+captures show the tooltip live over the chip ("How Memory Palace works"
+in the hint slot), the INSTRUCTIONS view with every paragraph visible and
+cleanly stacked, and the X returning to the main view. Boot clean each
+cycle.
+
 ## Wed Aug 12, evening — The menu follows your gaze downhill
 
 **Prompt:** "the main menu doesn't seem super responsive to the vertical

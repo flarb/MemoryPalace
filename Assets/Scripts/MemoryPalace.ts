@@ -146,8 +146,9 @@ export class MemoryPalace extends BaseScriptComponent {
         else this.finishSession();
       });
 
+      // Modal hint line is now the hover-tooltip slot (empty when idle) —
+      // per-button copy lives in MemoryPalaceUI.buildModalContent.
       if (this.editorMode) {
-        this.uiHud.setHintText("Press New to start a palace");
         this.uiHud.setCardHint("Click to finish");
       }
 

@@ -45,6 +45,8 @@ const ICON_EXPLORE = requireAsset("../Icons/explore.png") as Texture
 const ICON_TRAIN = requireAsset("../Icons/psychology.png") as Texture
 const ICON_MIC = requireAsset("../Icons/mic.png") as Texture
 const ICON_SPEAK = requireAsset("../Icons/volume_up.png") as Texture
+const ICON_HELP_Q = requireAsset("../Icons/question_mark.png") as Texture
+const ICON_CLOSE = requireAsset("../Icons/close.png") as Texture
 const FONT_LIGHT = requireAsset("../Fonts/Montserrat-Light.ttf") as Font
 const FONT_MEDIUM = requireAsset("../Fonts/Montserrat-Medium.ttf") as Font
 
@@ -114,6 +116,29 @@ const FAR_POS = new vec3(0, -100000, 0)     // park hidden panels here until pos
 const PICKER_PARK = new vec3(0, -100000, 0) // same trick, frame-local space
 
 const MODAL_W = 26
+
+// Help view (INSTRUCTIONS) metrics + copy. Caption ≈ 0.46 cm/char (em math
+// below); per-paragraph flex rows, sized by a conservative chars/line so
+// estimation error opens gaps rather than overlapping lines.
+const HELP_WRAP_W = 19.5    // cm — body wrap width
+const HELP_LINE_H = 1.15    // cm — Caption line pitch
+const HELP_CHARS_PER_LINE = 30  // left-aligned ragged wrap fills ~0.75, not 0.88
+const HELP_PARAS = [
+  "Memory Palace turns the room around you into a place to keep what you " +
+  "want to remember — the ancient method of loci, rebuilt in AR.",
+  "NEW — start a fresh palace. Tap the swirl on your hand, frame what you " +
+  "want to remember, and speak. A gem drops where you point, holding your " +
+  "words.",
+  "LOAD — reopen a saved palace to add or remove memories.",
+  "EXPLORE — walk your palace hands-free. Distant memories glint and " +
+  "whisper as you come near. Gaze at a gem to reveal its words; tap the " +
+  "speaker to hear them.",
+  "TRAIN — the recall quiz. Follow the ping to each glow, say what lives " +
+  "there, then reveal and grade yourself. As mastery grows the palace " +
+  "shows you less, until the memories are simply yours.",
+  "From a gem's card you can also conjure a 3D object or image of the " +
+  "memory. Everything saves as you go.",
+]
 const CARD_W = 24
 const PICKER_ROWS = 6
 
@@ -185,7 +210,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private modalFrame: Frame | null = null
   private mainView: SceneObject | null = null
   private pickerView: SceneObject | null = null
-  private activeView: "main" | "picker" = "main"
+  private activeView: "main" | "picker" | "help" = "main"
+  private helpView: SceneObject | null = null
+  private helpSize: vec2 | null = null
+  private helpReady = false
   private mainSize: vec2 | null = null
   private pickerSize: vec2 | null = null
   private pickerReady = false
@@ -458,13 +486,15 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.gazeLabelRoot.enabled = this.wantGazeLabel
   }
 
-  /** Swap between the modal's main buttons and the palace picker. */
-  private setActiveView(v: "main" | "picker"): void {
+  /** Swap between the modal's main buttons, the palace picker, and help. */
+  private setActiveView(v: "main" | "picker" | "help"): void {
     this.activeView = v
+    this.setHintText("")   // hover-exit doesn't fire across a view swap
     if (this.mainView !== null) this.mainView.enabled = (v === "main")
     if (this.pickerView !== null && this.pickerReady) this.pickerView.enabled = (v === "picker")
+    if (this.helpView !== null && this.helpReady) this.helpView.enabled = (v === "help")
     if (this.modalFrame !== null) {
-      const size = v === "main" ? this.mainSize : this.pickerSize
+      const size = v === "main" ? this.mainSize : v === "picker" ? this.pickerSize : this.helpSize
       if (size !== null) this.modalFrame.innerSize = size
     }
   }
@@ -527,8 +557,28 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
       this.buildPickerContent(pcol)
 
+      // Help view: INSTRUCTIONS — same park-while-initializing trick (G3).
+      this.helpView = this.obj(host, "HelpView", PICKER_PARK.add(new vec3(0, -200, 0)))
+      const hcol = this.flexColumn(this.helpView, MODAL_W, -1, {
+        gap: 0.8, padX: 1.6, padY: 1.6,
+        justify: FlexJustify.Start, align: FlexAlign.Center,
+      })
+      const hflex = hcol.getComponent(FlexLayout.getTypeName()) as FlexLayout
+      hflex.onLayoutComplete.add((r) => {
+        this.helpSize = new vec2(r.containerWidth, r.containerHeight)
+        if (this.activeView === "help" && this.modalFrame !== null) {
+          this.modalFrame.innerSize = this.helpSize
+        }
+      })
+      this.buildHelpContent(hcol)
+
       const park = this.createEvent("DelayedCallbackEvent") as DelayedCallbackEvent
       park.bind(() => {
+        if (this.helpView !== null) {
+          this.helpView.getTransform().setLocalPosition(new vec3(0, 0, 0.6))
+          this.helpView.enabled = false
+          this.helpReady = true
+        }
         if (this.pickerView === null) return
         this.pickerView.getTransform().setLocalPosition(new vec3(0, 0, 0.6))
         this.pickerView.enabled = false
@@ -565,14 +615,18 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
     })
 
-    this.addModalButton(col, "New", ICON_NEW, () => this._onCreate.invoke())
-    this.addModalButton(col, "Load", ICON_LOAD, () => this._onEditRequested.invoke())
-    this.addModalButton(col, "Explore", ICON_EXPLORE, () => this._onExplore.invoke())
-    this.addModalButton(col, "Train", ICON_TRAIN, () => this._onTrain.invoke())
+    this.addModalButton(col, "New", ICON_NEW,
+      "Press New to start a palace", () => this._onCreate.invoke())
+    this.addModalButton(col, "Load", ICON_LOAD,
+      "Load and edit an existing palace", () => this._onEditRequested.invoke())
+    this.addModalButton(col, "Explore", ICON_EXPLORE,
+      "Walk your palace and relive its memories", () => this._onExplore.invoke())
+    this.addModalButton(col, "Train", ICON_TRAIN,
+      "Quiz your recall, locus by locus", () => this._onTrain.invoke())
 
-    // First-run hint (Snap hand-menu guideline: users won't find hand UI unaided).
+    // Tooltip line: empty until a button above is hovered (copy set per button).
     this.flexChild(col, {w: 22, h: 1.5}, (c) => {
-      this.hintText = this.textIn(c, "Create a palace, then tap the swirl on your hand", "Caption", {
+      this.hintText = this.textIn(c, "", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
       })
     })
@@ -584,15 +638,60 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
     })
 
-    // Studio credit, bottom right.
-    this.flexChild(col, {w: 22, h: 1.1}, (c) => {
-      const row = this.flexRow(c, 22, 1.1, {justify: FlexJustify.End, align: FlexAlign.Center})
+    // Bottom row: circular help chip (lower left) · studio credit (right).
+    this.flexChild(col, {w: 22, h: 2.6}, (c) => {
+      const row = this.flexRow(c, 22, 2.6, {justify: FlexJustify.SpaceBetween, align: FlexAlign.Center})
+      this.flexChild(row, {w: 2.4, h: 2.4}, (cc) => {
+        const btn = cc.createComponent(Button.getTypeName()) as Button
+        btn.size = new vec3(2.4, 2.4, 1)   // BEFORE init
+        btn.onHoverEnter.add(() => this.setHintText("How Memory Palace works"))
+        btn.onHoverExit.add(() => this.setHintText(""))
+        const face = this.obj(cc, "Face", new vec3(0, 0, BUTTON_LABEL_Z))
+        this.imageIn(face, ICON_HELP_Q, 1.2, 1.2, COL_TEAL)
+        btn.onTriggerUp.add(() => this.setActiveView("help"))
+      })
       this.flexChild(row, {w: 6, h: 1.1}, (cc) => {
         this.textIn(cc, "FLARB LLC", "Caption", {
           font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
         })
       })
     })
+  }
+
+  /** Help view: X (back to main), INSTRUCTIONS title, scrollable body text. */
+  private buildHelpContent(col: SceneObject): void {
+    // Title bar: X upper-left, centered title, spacer mirroring the X.
+    this.flexChild(col, {w: 22, h: 2.6}, (c) => {
+      const row = this.flexRow(c, 22, 2.6, {justify: FlexJustify.SpaceBetween, align: FlexAlign.Center})
+      this.flexChild(row, {w: 2.4, h: 2.4}, (cc) => {
+        const btn = cc.createComponent(Button.getTypeName()) as Button
+        btn.size = new vec3(2.4, 2.4, 1)   // BEFORE init
+        const face = this.obj(cc, "Face", new vec3(0, 0, BUTTON_LABEL_Z))
+        this.imageIn(face, ICON_CLOSE, 1.2, 1.2, COL_TEXT)
+        btn.onTriggerUp.add(() => this.setActiveView("main"))
+      })
+      this.flexChild(row, {w: 12, h: 2.2}, (cc) => {
+        this.textIn(cc, "I N S T R U C T I O N S", "Subheadline", {
+          font: FONT_LIGHT, nativeWeight: 300, color: COL_TEXT,
+        })
+      })
+      this.flexChild(row, {w: 2.4, h: 2.4}, () => {})   // spacer keeps the title centered
+    })
+
+    // Body — full text visible, one flex row per paragraph. (A ScrollWindow
+    // pass is parked for now: its pinch-drag input loses to the Frame's
+    // whole-panel InteractionPlane; revisit if the copy outgrows the panel.)
+    for (const para of HELP_PARAS) {
+      const lines = Math.ceil(para.length / HELP_CHARS_PER_LINE)
+      const h = lines * HELP_LINE_H + 0.3
+      this.flexChild(col, {w: 22, h: h}, (c) => {
+        const t = this.textIn(c, para, "Caption", {
+          font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT,
+          wrap: {w: HELP_WRAP_W, h: h},
+        })
+        t.horizontalAlignment = HorizontalAlignment.Left   // document, not a caption
+      })
+    }
   }
 
   /** Picker view: title + up to 6 saved-palace rows + empty state + Back. */
@@ -641,10 +740,14 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.addPlainButton(col, "Back", 10, () => this.setActiveView("main"))
   }
 
-  private addModalButton(col: SceneObject, label: string, icon: Texture | null, onClick: () => void): void {
+  private addModalButton(col: SceneObject, label: string, icon: Texture | null,
+      tooltip: string, onClick: () => void): void {
     this.flexChild(col, {w: 14, h: 3.2}, (host) => {
       const btn = host.createComponent(Button.getTypeName()) as Button
       btn.size = new vec3(14, 3.2, 1)   // BEFORE init
+      // Tooltip: the hint line shows this button's purpose while hovered.
+      btn.onHoverEnter.add(() => this.setHintText(tooltip))
+      btn.onHoverExit.add(() => this.setHintText(""))
 
       const face = this.obj(host, "Face", new vec3(0, 0, BUTTON_LABEL_Z))
       const row = this.flexRow(face, 14, 3.2, {
