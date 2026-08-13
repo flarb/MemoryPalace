@@ -6,6 +6,9 @@
  *    Create / Edit / Explore / Train buttons, first-run hint, credit. Holds a
  *    second content view — the saved-palace picker (6 rows + Back) — swapped
  *    in-place per DESIGN.md "Edit → saved-palace picker on the modal".
+ *    The picker is shared by all three palace-opening buttons and carries a
+ *    PalacePickerIntent, so its title says what the pick will DO ("Edit which
+ *    palace?" / "Explore which palace?") and one row tap routes accordingly.
  *  - Transcript card: mic + streaming ASR body (pose driven by main script).
  *  - Memory card: transcript + Delete (soft rose) + Close — blooms next to a
  *    selected gem during editing sessions; world-posed by the main script.
@@ -13,7 +16,7 @@
  *    cluster; wizard status line.
  *
  * Channel A event-bus: main pushes state via setters; subscribes to onCreate /
- * onEditRequested / onEditPalace / onExplore / onTrain / onCardDelete /
+ * onEditRequested / onPalacePicked / onExplore / onTrain / onCardDelete /
  * onCardClose.
  *
  * Hidden-panel pattern (G3): UIKit elements only initialize on enabled
@@ -129,7 +132,7 @@ const HELP_PARAS = [
   "NEW — start a fresh palace. Tap the swirl on your hand, frame what you " +
   "want to remember, and speak. A gem drops where you point, holding your " +
   "words.",
-  "LOAD — reopen a saved palace to add or remove memories.",
+  "EDIT — reopen a saved palace to add or remove memories.",
   "EXPLORE — walk your palace hands-free. Distant memories glint and " +
   "whisper as you come near. Gaze at a gem to reveal its words; tap the " +
   "speaker to hear them.",
@@ -149,6 +152,23 @@ export interface PalaceListEntry {
   memoryCount: number
 }
 
+/** What the pick will do — the picker is shared by Edit, Explore and Train. */
+export type PalacePickerIntent = "edit" | "explore" | "train"
+
+/** One row tap: the palace chosen, plus the intent the picker was opened with. */
+export interface PalacePick {
+  id: string
+  intent: PalacePickerIntent
+}
+
+// Picker copy per intent: the title states the verb, so a row tap is never a
+// mystery ("which palace?" always answers "…to do what?").
+const PICKER_TITLE: {[k: string]: string} = {
+  edit: "Edit which palace?",
+  explore: "Explore which palace?",
+  train: "Train which palace?",
+}
+
 @component
 export class MemoryPalaceUI extends BaseScriptComponent {
   // ── Public events (UI → main) ──────────────────────────────────────────────
@@ -156,8 +176,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   get onCreate(): PublicApi<void> { return this._onCreate.publicApi() }
   private _onEditRequested = new Event<void>()
   get onEditRequested(): PublicApi<void> { return this._onEditRequested.publicApi() }
-  private _onEditPalace = new Event<string>()
-  get onEditPalace(): PublicApi<string> { return this._onEditPalace.publicApi() }
+  private _onPalacePicked = new Event<PalacePick>()
+  get onPalacePicked(): PublicApi<PalacePick> { return this._onPalacePicked.publicApi() }
   private _onExplore = new Event<void>()
   get onExplore(): PublicApi<void> { return this._onExplore.publicApi() }
   private _onTrain = new Event<void>()
@@ -218,8 +238,11 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private pickerSize: vec2 | null = null
   private pickerReady = false
   private pendingPickerList: PalaceListEntry[] | null = null
+  private pendingPickerIntent: PalacePickerIntent = "edit"
+  private pickerIntent: PalacePickerIntent = "edit"
   private pickerRows: {item: SceneObject; label: Text}[] = []
   private pickerRowIds: (string | null)[] = []
+  private pickerTitleText: Text | null = null
   private pickerEmptyText: Text | null = null
 
   // Dynamic text handles
@@ -293,12 +316,20 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.hintText) this.hintText.text = t
   }
 
-  /** Swap the modal to the saved-palace picker view, populated with entries. */
-  showPalacePicker(entries: PalaceListEntry[]): void {
+  /**
+   * Swap the modal to the saved-palace picker view, populated with entries.
+   * `intent` decides the title copy and where a row tap routes — the caller
+   * gets it back on onPalacePicked, so the picker itself stays stateless-ish.
+   */
+  showPalacePicker(entries: PalaceListEntry[],
+      intent: PalacePickerIntent = "edit"): void {
+    this.pickerIntent = intent
     if (!this.pickerReady) {
       this.pendingPickerList = entries   // picker still in its park window
+      this.pendingPickerIntent = intent
       return
     }
+    if (this.pickerTitleText) this.pickerTitleText.text = PICKER_TITLE[intent]
     for (let i = 0; i < this.pickerRows.length; i++) {
       const e = entries[i]
       if (e !== undefined) {
@@ -586,7 +617,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         if (this.pendingPickerList !== null) {
           const list = this.pendingPickerList
           this.pendingPickerList = null
-          this.showPalacePicker(list)
+          this.showPalacePicker(list, this.pendingPickerIntent)
         }
       })
       park.reset(0.25)
@@ -617,8 +648,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
     this.addModalButton(col, "New", ICON_NEW,
       "Press New to start a palace", () => this._onCreate.invoke())
-    this.addModalButton(col, "Load", ICON_LOAD,
-      "Load and edit an existing palace", () => this._onEditRequested.invoke())
+    this.addModalButton(col, "Edit", ICON_LOAD,
+      "Change an existing palace", () => this._onEditRequested.invoke())
     this.addModalButton(col, "Explore", ICON_EXPLORE,
       "Walk your palace and relive its memories", () => this._onExplore.invoke())
     this.addModalButton(col, "Train", ICON_TRAIN,
@@ -696,8 +727,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
   /** Picker view: title + up to 6 saved-palace rows + empty state + Back. */
   private buildPickerContent(col: SceneObject): void {
+    // Title is rewritten per intent in showPalacePicker; "edit" is the default
+    // so the built copy already matches the first-built state.
     this.flexChild(col, {w: 22, h: 2.2}, (c) => {
-      this.textIn(c, "Your palaces", "Body", {
+      this.pickerTitleText = this.textIn(c, PICKER_TITLE["edit"], "Body", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT,
       })
     })
@@ -731,7 +764,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
         btn.onTriggerUp.add(() => {
           const id = this.pickerRowIds[idx]
-          if (id !== null) this._onEditPalace.invoke(id)
+          if (id !== null) {
+            this._onPalacePicked.invoke({id: id, intent: this.pickerIntent})
+          }
         })
       })
       this.pickerRows.push({item: item, label: labelRef!})

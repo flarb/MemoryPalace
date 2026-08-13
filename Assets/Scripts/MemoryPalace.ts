@@ -12,7 +12,10 @@
  *   LISTENING ASR streams onto the transcript card; auto-stop on ~1.2 s
  *             silence or pinch/click; canned transcript in the editor.
  *   → gem drops at the anchor, memory recorded, auto-saved, back to SESSION.
- *   EXPLORE   view-only walk of the active palace (last created/loaded):
+ *   EXPLORE   view-only walk of a chosen palace (Edit / Explore / Train all
+ *             share the saved-palace picker; it only appears when more than
+ *             one palace exists, since a palace is bound to a physical room
+ *             and guessing wrong scatters gems across the wrong anchors):
  *             distant anchors glint and resolve on approach; ONE proximity
  *             whisper (per-memory TTS) at a time; select → read-only card +
  *             full playback. No sigil swirl, no edit affordances — the Done
@@ -24,7 +27,7 @@
  * All 3D content assembles here at runtime (script-driven scene assembly);
  * every visible string lives in MemoryPalaceUI.
  */
-import { MemoryPalaceUI } from "./MemoryPalaceUI";
+import { MemoryPalaceUI, PalacePick, PalacePickerIntent } from "./MemoryPalaceUI";
 import { SigilController } from "./SigilController";
 import { ReticleController } from "./ReticleController";
 import { GemFactory } from "./GemFactory";
@@ -86,7 +89,6 @@ export class MemoryPalace extends BaseScriptComponent {
   private trainRemembered = 0;
   private palace: Palace | null = null;
   private selectedMemoryId: string | null = null;
-  private lastPalaceId: string | null = null;   // "active" palace for Explore
 
   private editorMode = global.deviceInfoSystem.isEditor();
   private stateAge = 0;
@@ -119,20 +121,16 @@ export class MemoryPalace extends BaseScriptComponent {
     this.createEvent("OnStartEvent").bind(() => {
       // UI events (Channel A).
       this.uiHud.onCreate.add(() => this.onCreatePalace());
-      this.uiHud.onEditRequested.add(() => {
-        this.uiHud.showPalacePicker(this.store.listPalaces().map((s) => ({
-          id: s.id, name: s.name, memoryCount: s.memoryCount,
-        })));
-      });
-      this.uiHud.onEditPalace.add((id: string) => this.onEditPalace(id));
+      this.uiHud.onEditRequested.add(() => this.showPicker("edit"));
+      this.uiHud.onPalacePicked.add((p: PalacePick) => this.openPalace(p.id, p.intent));
       this.uiHud.onCardDelete.add(() => this.onDeleteSelected());
       this.uiHud.onCardClose.add(() => this.closeMemoryCard());
       this.uiHud.onCardEnhanceMesh.add(() => this.onEnhanceSelected("mesh"));
       this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
       this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
       this.uiHud.onGazeSpeak.add(() => this.speakGazedMemory());
-      this.uiHud.onExplore.add(() => this.onExplore());
-      this.uiHud.onTrain.add(() => this.onTrain());
+      this.uiHud.onExplore.add(() => this.requestMode("explore"));
+      this.uiHud.onTrain.add(() => this.requestMode("train"));
       this.uiHud.onTrainReveal.add(() => this.revealCurrentLocus());
       this.uiHud.onTrainGrade.add((delta: number) => this.onTrainGrade(delta));
 
@@ -214,19 +212,67 @@ export class MemoryPalace extends BaseScriptComponent {
   private onCreatePalace(): void {
     if (this.state !== "MODAL") return;
     this.palace = this.store.createPalace();
-    this.lastPalaceId = this.palace.id;
     this.enterSession(false);
   }
 
-  private onEditPalace(id: string): void {
+  // ── Opening a saved palace (shared by Edit / Explore / Train) ──────────────
+
+  /** Swap the modal to the saved-palace picker, labelled for `intent`. */
+  private showPicker(intent: PalacePickerIntent): void {
+    this.uiHud.showPalacePicker(this.store.listPalaces().map((s) => ({
+      id: s.id, name: s.name, memoryCount: s.memoryCount,
+    })), intent);
+  }
+
+  /**
+   * Modal button → mode. A palace is bound to a physical room, so with more
+   * than one saved we ASK instead of guessing: opening the wrong palace
+   * scatters gems across another room's anchors, and nothing on screen would
+   * explain why. One palace = no choice to make, so go straight in and the
+   * demo path (New → capture → Done → Explore) stays a single press.
+   *
+   * Edit deliberately keeps its picker even at one palace — it doubles as the
+   * only place you can see the palaces you have.
+   */
+  private requestMode(intent: "explore" | "train"): void {
+    if (this.state !== "MODAL") return;
+    const list = this.store.listPalaces();
+    if (list.length === 0) {
+      this.uiHud.showToast(intent === "train"
+        ? "Nothing to train yet — press New first"
+        : "Nothing to explore yet — press New first");
+      return;
+    }
+    if (list.length === 1) {
+      this.openPalace(list[0].id, intent);
+      return;
+    }
+    // listPalaces() is most-recently-updated first, so the palace you just
+    // finished editing leads the rows — the old implicit guess, made visible.
+    this.showPicker(intent);
+  }
+
+  /** A palace was chosen (picker row, or the only one saved) — enter its mode. */
+  private openPalace(id: string, intent: PalacePickerIntent): void {
     if (this.state !== "MODAL") return;
     const loaded = this.store.load(id);
     if (loaded === null) {
       this.uiHud.showToast("Couldn't load that palace");
       return;
     }
+    // Edit can open an empty palace (that's how you fill it); the read-back
+    // modes cannot. Toasting keeps the picker up so another row is one tap away.
+    if (intent !== "edit" && loaded.memories.length === 0) {
+      this.uiHud.showToast("\"" + loaded.name + "\" has no memories yet");
+      return;
+    }
     this.palace = loaded;
-    this.lastPalaceId = loaded.id;
+    if (intent === "edit") this.enterEditSession(loaded);
+    else if (intent === "explore") this.enterExplore(loaded);
+    else this.enterTrain(loaded);
+  }
+
+  private enterEditSession(loaded: Palace): void {
     for (const rec of loaded.memories) {
       this.spawnMemoryGem(rec);
       // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
@@ -275,25 +321,7 @@ export class MemoryPalace extends BaseScriptComponent {
 
   // ── Explore mode (view-only walk of the active palace) ─────────────────────
 
-  private onExplore(): void {
-    if (this.state !== "MODAL") return;
-    // Active palace = last created/loaded this run, else most recently updated.
-    let loaded: Palace | null = null;
-    if (this.lastPalaceId !== null) loaded = this.store.load(this.lastPalaceId);
-    if (loaded === null) {
-      const list = this.store.listPalaces();
-      if (list.length > 0) loaded = this.store.load(list[0].id);
-    }
-    if (loaded === null) {
-      this.uiHud.showToast("Nothing to explore yet — press New first");
-      return;
-    }
-    if (loaded.memories.length === 0) {
-      this.uiHud.showToast("\"" + loaded.name + "\" has no memories yet");
-      return;
-    }
-    this.palace = loaded;
-    this.lastPalaceId = loaded.id;
+  private enterExplore(loaded: Palace): void {
     for (const rec of loaded.memories) {
       this.spawnMemoryGem(rec);
       // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
@@ -330,24 +358,7 @@ export class MemoryPalace extends BaseScriptComponent {
 
   // ── Train mode v1 (recall quiz over the active palace, capture order) ──────
 
-  private onTrain(): void {
-    if (this.state !== "MODAL") return;
-    let loaded: Palace | null = null;
-    if (this.lastPalaceId !== null) loaded = this.store.load(this.lastPalaceId);
-    if (loaded === null) {
-      const list = this.store.listPalaces();
-      if (list.length > 0) loaded = this.store.load(list[0].id);
-    }
-    if (loaded === null) {
-      this.uiHud.showToast("Nothing to train yet — press New first");
-      return;
-    }
-    if (loaded.memories.length === 0) {
-      this.uiHud.showToast("\"" + loaded.name + "\" has no memories yet");
-      return;
-    }
-    this.palace = loaded;
-    this.lastPalaceId = loaded.id;
+  private enterTrain(loaded: Palace): void {
     this.trainRemembered = 0;
     for (const rec of loaded.memories) {
       // Quiz: every locus starts hidden as a bare glow (no enhance regen —
