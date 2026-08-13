@@ -19,7 +19,9 @@ Train-reveal speak path, which shares the same button and flow.
 live tonight — RSG tokens were hours expired, so only the instant
 failure path was reachable; the animation is a sine on scale/alpha with
 a state-reset that is correct by construction. One real speaker tap
-(fresh tokens) is the visual check.
+(fresh tokens) is the visual check. **User check same night: "works
+perfectly" — increment closed.** Day wrap (user): "check everything in,
+we'll work on the remaining features tomorrow when fable resets."
 
 ## Wed Aug 12, ~9:25 PM — The speaker button comes inside
 
