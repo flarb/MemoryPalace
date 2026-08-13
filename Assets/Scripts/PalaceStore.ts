@@ -20,8 +20,10 @@ const PALACE_KEY_PREFIX = "mp_palace_";
 
 /** DESIGN.md size guard: cap memories per palace well under storage limits. */
 export const MAX_MEMORIES_PER_PALACE = 50;
-/** Soft warning threshold for one palace's JSON payload (chars ≈ bytes). */
-const SOFT_PALACE_CHARS = 24000;
+/** Soft warning threshold for one palace's JSON payload (chars ≈ bytes).
+ *  Raised for photo persistence — MemoryPalace's PHOTO_BUDGET_CHARS caps the
+ *  photo share well under this. */
+const SOFT_PALACE_CHARS = 64000;
 
 export interface StoredVec3 {
   x: number;
@@ -42,6 +44,11 @@ export interface MemoryRecord {
   createdAt: number;
   /** Recall mastery 0–3 (Train self-grades); absent on old saves = 0. */
   mastery?: number;
+  /** 192 px JPEG b64 crop of the framed region (persistence is a bonus,
+   *  never a gate — absent = in-session-only or no photo). */
+  snap?: string;
+  /** 16 px twin of `snap` — bilinear upscale = the Train blur hint. */
+  snapTiny?: string;
   /** Conjured imagery request — regenerated lazily on palace load. */
   enhance?: EnhanceSpec;
 }

@@ -39,11 +39,18 @@ import {
   toStoredVec3, fromStoredVec3, freshMemoryId, MAX_MEMORIES_PER_PALACE,
 } from "./PalaceStore";
 import { EnhanceService, EnhanceKind, buildEnhancePrompt, averageTextureColor } from "./EnhanceService";
+import { SnapshotService, Snapshot } from "./SnapshotService";
 import { HandInputData } from "SpectaclesInteractionKit.lspkg/Providers/HandInputData/HandInputData";
 import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider";
 
 const BRAND_MAT = requireAsset("../SimpleVertexBaseColor.lspkg/vertexBaseColorMaterial.mat") as Material;
 const GAZE_HUM = requireAsset("../GeneratedSFX/gazehum.wav") as AudioTrackAsset;
+const IMAGE_MAT = requireAsset("../Materials/ImageMaterial.mat") as Material;
+
+// 2D snapshots: per-palace budget for persisted photo chars — beyond it,
+// photos stay in-session only (DESIGN risk note allows exactly that).
+const PHOTO_BUDGET_CHARS = 40000;
+const HINT_QUAD_CM = 16;   // Train Recall-tier blurred hint quad size
 
 const PLACED_GEM_SCALE = 0.15;                  // ~9 cm
 const AIM_DISTANCE = 150;                       // cm along gaze (reticle + gem)
@@ -89,6 +96,15 @@ export class MemoryPalace extends BaseScriptComponent {
   private trainRemembered = 0;
   private palace: Palace | null = null;
   private selectedMemoryId: string | null = null;
+
+  // 2D snapshots: capture service + in-session texture caches + the single
+  // reusable blurred-hint quad (only the current Train target ever needs one).
+  private snaps = new SnapshotService();
+  private snapTex: { [memoryId: string]: Texture } = {};
+  private snapTinyTex: { [memoryId: string]: Texture } = {};
+  private pendingSnap: Snapshot | null = null;
+  private hintObj: SceneObject | null = null;
+  private hintImage: Image | null = null;
 
   private editorMode = global.deviceInfoSystem.isEditor();
   private stateAge = 0;
@@ -386,11 +402,12 @@ export class MemoryPalace extends BaseScriptComponent {
     }
     if (rec === null) return;
     const mastery = rec.mastery !== undefined ? rec.mastery : 0;
-    // Vanishing interface v1: Learn (0) = gem + words, Practice (1) = gem only,
-    // Recall+ (2–3) = bare glow. (Blurred-snapshot tier deferred — 2D snapshots
-    // don't exist in the capture pipeline yet.)
+    // Vanishing interface: Learn (0) = gem + words, Practice (1) = gem only,
+    // Recall (2) = blurred snapshot when the memory has one (else bare glow),
+    // Mastered (3) = bare glow.
     if (mastery <= 1) this.gems.setResolved(memoryId, true);
     if (mastery === 0) this.showTrainLabel(rec);
+    if (mastery === 2) this.showSnapHint(rec);
     const pose = this.memCardPose(fromStoredVec3(rec.position));
     this.uiHud.showTrainPrompt(pose.pos, pose.rot);
     print("MemoryPalace: train prompt \"" + rec.transcript + "\" (mastery " + mastery + ")");
@@ -407,6 +424,7 @@ export class MemoryPalace extends BaseScriptComponent {
       if (m.id === cur.memoryId) { rec = m; break; }
     }
     if (rec === null) return;
+    this.hideSnapHint();   // the real thing replaces the blur
     this.gems.setResolved(rec.id, true);
     this.showTrainLabel(rec);   // words + speaker button (TTS falls back silent)
     const pose = this.memCardPose(fromStoredVec3(rec.position));
@@ -431,6 +449,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.store.save(this.palace);   // mastery persists with the palace
     this.uiHud.hideMemoryCard();
     this.uiHud.hideGazeLabel();
+    this.hideSnapHint();
     if (this.train.advance()) {
       this.flash("Next locus — follow the ping",
         this.camera.getForwardPosition(80, false));
@@ -449,6 +468,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.train.end();
     this.uiHud.hideMemoryCard();
     this.uiHud.hideGazeLabel();
+    this.hideSnapHint();
     this.gems.despawnAll();
     this.uiHud.hideSigilLabel();
     this.uiHud.hideDoneLabel();
@@ -491,6 +511,7 @@ export class MemoryPalace extends BaseScriptComponent {
     }
     this.closeMemoryCard();
     this.setState("AIMING");
+    this.snaps.ensureCamera();   // spin up so frames flow by confirm time
     this.uiHud.hideSigilLabel();
     this.uiHud.hideDoneLabel();
     this.sigil.setActive(false);
@@ -503,6 +524,9 @@ export class MemoryPalace extends BaseScriptComponent {
   private confirmPlacement(): void {
     if (this.state !== "AIMING") return;
     this.setState("LISTENING");
+    // FRAME = the confirm gesture (v1): grab the still NOW, cropped around the
+    // confirmed anchor's screen projection — both free-float and surface-pin.
+    this.pendingSnap = this.snaps.capture(this.reticle.getPoint(), this.camera.getComponent());
     this.uiHud.hideStatus();
     // Caption-style card: seed at the lower-third target, then soft-follow.
     const seed = this.cardTargetPose();
@@ -543,6 +567,12 @@ export class MemoryPalace extends BaseScriptComponent {
         createdAt: Date.now(),
       };
       if (surfaceNormal !== null) rec.surfaceNormal = toStoredVec3(surfaceNormal);
+      if (this.pendingSnap !== null) {
+        // The framed crop rides the memory: session cache now, JPEG b64 async.
+        this.snapTex[rec.id] = this.pendingSnap.tex;
+        this.snapTinyTex[rec.id] = this.pendingSnap.tiny;
+        this.persistSnapshot(rec, this.pendingSnap);
+      }
       this.palace.memories.push(rec);
       this.spawnMemoryGem(rec, true);   // fresh placement = arrival juice + SFX
       this.store.save(this.palace);   // auto-save after every capture
@@ -556,9 +586,94 @@ export class MemoryPalace extends BaseScriptComponent {
 
     // Both editor and device return to the session — the sigil cluster is the
     // next-capture affordance; the Done chip is the exit.
+    this.pendingSnap = null;
     this.sigil.setActive(true);
     this.setState("SESSION");
     this.flash(flashText, flashPos);
+  }
+
+  // ── 2D snapshots (capture Step 1 v1 + Train Recall-tier hint) ──────────────
+
+  /** Persist the crop as small JPEGs — a bonus, never a gate (DESIGN risk note). */
+  private persistSnapshot(rec: MemoryRecord, shot: Snapshot): void {
+    Promise.all([this.snaps.encode(shot.tex), this.snaps.encode(shot.tiny)])
+      .then((encoded) => {
+        const full = encoded[0];
+        const tiny = encoded[1];
+        if (this.palace === null) return;   // session already ended
+        let used = 0;
+        for (const m of this.palace.memories) {
+          if (m.snap !== undefined) used += m.snap.length;
+          if (m.snapTiny !== undefined) used += m.snapTiny.length;
+        }
+        if (used + full.length + tiny.length > PHOTO_BUDGET_CHARS) {
+          print("MemoryPalace: photo budget reached (" + used +
+            " chars used) — this photo stays in-session only");
+          return;
+        }
+        rec.snap = full;
+        rec.snapTiny = tiny;
+        this.store.save(this.palace);
+        print("MemoryPalace: photo persisted (" + full.length + " + " +
+          tiny.length + " chars)");
+      })
+      .catch((e) => print("MemoryPalace: photo encode failed (" + e + ") — in-session only"));
+  }
+
+  /** Cached card photo; kicks an async decode of the persisted JPEG if needed. */
+  private cardPhotoFor(rec: MemoryRecord): Texture | null {
+    const cached = this.snapTex[rec.id];
+    if (cached !== undefined) return cached;
+    if (rec.snap !== undefined) {
+      const id = rec.id;
+      this.snaps.decode(rec.snap)
+        .then((tex) => {
+          this.snapTex[id] = tex;
+          if (this.selectedMemoryId === id) this.uiHud.setCardPhoto(tex);
+        })
+        .catch(() => print("MemoryPalace: photo decode failed for " + id));
+    }
+    return null;
+  }
+
+  /** Train Recall tier: the tiny crop, bilinear-upscaled on a quad = blur. */
+  private showSnapHint(rec: MemoryRecord): void {
+    const place = (tex: Texture): void => {
+      if (this.state !== "TRAIN") return;
+      const cur = this.train.current();
+      if (cur === null || cur.memoryId !== rec.id) return;   // target moved on
+      this.ensureHintQuad();
+      this.hintImage!.getMaterial(0).mainPass.baseTex = tex;
+      const p = fromStoredVec3(rec.position);
+      this.hintObj!.getTransform().setWorldPosition(p);
+      this.hintObj!.enabled = true;
+      print("MemoryPalace: blurred hint shown for \"" + rec.transcript + "\"");
+    };
+    const cached = this.snapTinyTex[rec.id];
+    if (cached !== undefined) { place(cached); return; }
+    if (rec.snapTiny === undefined) return;   // no photo — bare glow, as before
+    this.snaps.decode(rec.snapTiny)
+      .then((tex) => { this.snapTinyTex[rec.id] = tex; place(tex); })
+      .catch(() => print("MemoryPalace: hint decode failed for " + rec.id));
+  }
+
+  private hideSnapHint(): void {
+    if (this.hintObj !== null) this.hintObj.enabled = false;
+  }
+
+  private ensureHintQuad(): void {
+    if (this.hintObj !== null) return;
+    this.hintObj = global.scene.createSceneObject("SnapHint");
+    this.hintObj.setParent(this.getSceneObject());
+    const img = this.hintObj.createComponent("Component.Image") as Image;
+    const mat = IMAGE_MAT.clone();
+    mat.mainPass.depthTest = true;
+    mat.mainPass.depthWrite = false;
+    img.clearMaterials();
+    img.addMaterial(mat);
+    this.hintObj.getTransform().setLocalScale(new vec3(HINT_QUAD_CM, HINT_QUAD_CM, 1));
+    this.hintImage = img;
+    this.hintObj.enabled = false;
   }
 
   // ── Gem selection → memory card ────────────────────────────────────────────
@@ -605,6 +720,7 @@ export class MemoryPalace extends BaseScriptComponent {
     const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
     this.uiHud.showMemoryCard(rec.transcript, pos, quat.lookAt(toCam, upRef),
       rec.enhance !== undefined, this.state === "EXPLORE");
+    this.uiHud.setCardPhoto(this.cardPhotoFor(rec));   // both cards get the photo
     if (this.state === "EXPLORE") {
       // Select = full playback: the whisper's TTS cache at full voice (shared
       // with the gaze speak button; the whisper itself yields while the card
@@ -891,9 +1007,15 @@ export class MemoryPalace extends BaseScriptComponent {
       this.explore.update(dt, camPos);
     }
 
-    // Train: target pings + arrival detection.
+    // Train: target pings + arrival detection; the blurred hint billboards.
     if (this.state === "TRAIN") {
       this.train.update(dt, camPos);
+      if (this.hintObj !== null && this.hintObj.enabled) {
+        const hp = this.hintObj.getTransform().getWorldPosition();
+        const toCam = camPos.sub(hp).normalize();
+        const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
+        this.hintObj.getTransform().setWorldRotation(quat.lookAt(toCam, upRef));
+      }
     }
 
     // Status flash countdown (AIMING owns the status line exclusively).

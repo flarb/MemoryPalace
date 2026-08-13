@@ -1,5 +1,40 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, late night — Memories get photographs (2D snapshot capture)
+
+**Prompt:** "ok do the 2d snapshot cpature" (after a what's-left review
+that ranked it the top core gap — it was the "if time allows" item from
+Wednesday's milestone).
+
+**Increment:** new `SnapshotService.ts` — a continuous CameraModule
+`requestCamera` texture (editor-friendly; `requestImage` is device-only)
+spins up lazily at wizard start, and the reticle confirm (which IS the
+FRAME gesture — v1 keeps DESIGN's pinch-drag rectangle folded into
+AIMING) captures a square crop, 40% of frame height, centered on the
+anchor's screen projection: `cropped 636×636 @ (376,474) of 1392×1590 →
+192 px + 16 px tiny`. The 192 px JPEG feeds a new photo row on BOTH
+memory cards (edit + read-only, async-decoded on palace load); the 16 px
+twin's bilinear upscale is a free gaussian-ish blur that completes the
+vanishing interface: **Train mastery 2 now shows the blurred snapshot at
+the locus** (16 cm billboarded quad, hidden on reveal), mastery 3 stays
+bare glow — the Learn/Practice/Recall/Mastered ladder is fully populated.
+Photos persist as base64 pairs (~3 KB each) under a 40 K-char per-palace
+budget; over budget they stay in-session-only with a log line (DESIGN's
+risk note allows exactly that degrade).
+
+**Cut:** amber inclusion (photo inside the gem shell) deferred — not a
+one-try win against the faceted gem material; the card photo + blurred
+hint carry the value. On-device parallax between render and RGB cameras
+accepted for a centered crop. `ProceduralTextureProvider.create`
+deprecation warning noted for a later migrate-to-`createWithFormat`.
+
+**Verification:** builder pass — crop dims + persistence chars logged,
+card photo screenshot shows the aimed potted plant, blurred-hint tier
+log-verified via forced mastery 2, one organic end-to-end run with real
+mic ASR while the capture path was live. Orchestrator re-verified compile
++ clean boot. Leftover harness palaces sit in the editor store until LS
+restarts.
+
 ## Wed Aug 12, night — Button tooltips + the "?" help view
 
 **Prompt:** "make that line display what each button does as you

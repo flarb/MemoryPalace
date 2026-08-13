@@ -214,6 +214,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardReadOnlyRow: SceneObject | null = null
   private memCardPromptRow: SceneObject | null = null
   private memCardGradeRow: SceneObject | null = null
+  private memCardPhotoRow: SceneObject | null = null
+  private memCardPhotoMat: Material | null = null
   private cardHasEnhance = false
   private realPos: {[name: string]: vec3} = {}
 
@@ -443,9 +445,21 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   }
   hideMemoryCard(): void { this.wantMemCard = false; this.applyVisibility() }
 
+  /** Photo above the transcript on the memory card; null hides the row. */
+  setCardPhoto(tex: Texture | null): void {
+    if (this.memCardPhotoRow === null) return
+    if (tex === null) {
+      if (this.initDone) this.memCardPhotoRow.enabled = false
+      return
+    }
+    if (this.memCardPhotoMat !== null) this.memCardPhotoMat.mainPass.baseTex = tex
+    if (this.initDone) this.memCardPhotoRow.enabled = true
+  }
+
   /** Train: "What lives here?" + Reveal, posed like the memory card. */
   showTrainPrompt(worldPos: vec3, worldRot: quat): void {
     this.setMemCardMode("prompt")
+    this.setCardPhoto(null)   // the quiz card never leaks the photo
     if (this.memCardText) this.memCardText.text = "What lives here?"
     this.wantMemCard = true
     if (this.initDone) {
@@ -459,6 +473,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Train: the revealed memory + self-grade row (Remembered / Almost / Forgot). */
   showTrainGrade(transcript: string, worldPos: vec3, worldRot: quat): void {
     this.setMemCardMode("grade")
+    this.setCardPhoto(null)   // grade card stays words-only (photo lives on the hint)
     if (this.memCardText) {
       const MAX = 140
       this.memCardText.text = transcript.length > MAX ? transcript.slice(0, MAX) + "…" : transcript
@@ -503,6 +518,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = false
     if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = false
     if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = false
+    if (this.memCardPhotoRow !== null) this.memCardPhotoRow.enabled = false
     this.applyVisibility()
   }
 
@@ -890,6 +906,20 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
     flex.onLayoutComplete.add((r) => {
       plate.size = new vec2(r.containerWidth, r.containerHeight)
+    })
+
+    // Snapshot row: the memory's photo, above the words (hidden when none).
+    this.memCardPhotoRow = this.flexChild(col, {w: 11.5, h: 11.5}, (c) => {
+      const img = c.createComponent("Component.Image") as Image
+      const mat = imageMaterial.clone()
+      mat.mainPass.baseTex = LOGO_TEX   // placeholder until setCardPhoto
+      mat.mainPass.depthTest = true
+      mat.mainPass.depthWrite = false
+      mat.mainPass.baseColor = new vec4(1, 1, 1, 1)
+      img.clearMaterials()
+      img.addMaterial(mat)
+      c.getTransform().setLocalScale(new vec3(11.5, 11.5, 1))
+      this.memCardPhotoMat = mat
     })
 
     // The memory itself.
