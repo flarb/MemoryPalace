@@ -47,6 +47,16 @@ const BRAND_MAT = requireAsset("../SimpleVertexBaseColor.lspkg/vertexBaseColorMa
 const GAZE_HUM = requireAsset("../GeneratedSFX/gazehum.wav") as AudioTrackAsset;
 const IMAGE_MAT = requireAsset("../Materials/ImageMaterial.mat") as Material;
 
+// Solfeggio arcana SFX (see tempAssetGen/gen_sfx_solfeggio.js for the family).
+const SHUTTER_SFX = requireAsset("../GeneratedSFX/shutter.wav") as AudioTrackAsset;
+const CARD_OPEN_SFX = requireAsset("../GeneratedSFX/cardopen.wav") as AudioTrackAsset;
+const CARD_CLOSE_SFX = requireAsset("../GeneratedSFX/cardclose.wav") as AudioTrackAsset;
+const REVEAL_SFX = requireAsset("../GeneratedSFX/reveal.wav") as AudioTrackAsset;
+const GRADE_REMEMBER_SFX = requireAsset("../GeneratedSFX/graderemember.wav") as AudioTrackAsset;
+const GRADE_ALMOST_SFX = requireAsset("../GeneratedSFX/gradealmost.wav") as AudioTrackAsset;
+const GRADE_FORGOT_SFX = requireAsset("../GeneratedSFX/gradeforgot.wav") as AudioTrackAsset;
+const COMPLETE_SFX = requireAsset("../GeneratedSFX/complete.wav") as AudioTrackAsset;
+
 // 2D snapshots: per-palace budget for persisted photo chars — beyond it,
 // photos stay in-session only (DESIGN risk note allows exactly that).
 const PHOTO_BUDGET_CHARS = 40000;
@@ -140,7 +150,7 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onEditRequested.add(() => this.showPicker("edit"));
       this.uiHud.onPalacePicked.add((p: PalacePick) => this.openPalace(p.id, p.intent));
       this.uiHud.onCardDelete.add(() => this.onDeleteSelected());
-      this.uiHud.onCardClose.add(() => this.closeMemoryCard());
+      this.uiHud.onCardClose.add(() => this.onCardCloseTapped());
       this.uiHud.onCardEnhanceMesh.add(() => this.onEnhanceSelected("mesh"));
       this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
       this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
@@ -212,7 +222,7 @@ export class MemoryPalace extends BaseScriptComponent {
     humObj.setParent(root);
     this.gazeAudio = humObj.createComponent("Component.AudioComponent") as AudioComponent;
     this.gazeAudio.audioTrack = GAZE_HUM;
-    this.gazeAudio.playbackMode = Audio.PlaybackMode.LowLatency;
+    this.gazeAudio.playbackMode = Audio.PlaybackMode.LowPower;   // ambient loop (specs-audio)
     this.gazeAudio.volume = 0.22;
   }
 
@@ -426,6 +436,7 @@ export class MemoryPalace extends BaseScriptComponent {
     if (rec === null) return;
     this.hideSnapHint();   // the real thing replaces the blur
     this.gems.setResolved(rec.id, true);
+    this.gems.playTrackAt(REVEAL_SFX, fromStoredVec3(rec.position), 0.4);   // soft 528+852 bloom
     this.showTrainLabel(rec);   // words + speaker button (TTS falls back silent)
     const pose = this.memCardPose(fromStoredVec3(rec.position));
     this.uiHud.showTrainGrade(rec.transcript, pose.pos, pose.rot);
@@ -446,6 +457,14 @@ export class MemoryPalace extends BaseScriptComponent {
       break;
     }
     if (delta > 0) this.trainRemembered++;
+    // Grade trio: Remembered = bright airy triad (the moment's milestone);
+    // Almost = one plain kind 417; Forgot = soft low felt tone, the quietest —
+    // never punishing (DESIGN.md sound rule 6).
+    const gradePos = this.gems.basePosition(cur.memoryId);
+    this.gems.playTrackAt(
+      delta > 0 ? GRADE_REMEMBER_SFX : delta < 0 ? GRADE_FORGOT_SFX : GRADE_ALMOST_SFX,
+      gradePos !== null ? gradePos : this.camera.getForwardPosition(80, false),
+      delta > 0 ? 0.5 : delta < 0 ? 0.3 : 0.35);
     this.store.save(this.palace);   // mastery persists with the palace
     this.uiHud.hideMemoryCard();
     this.uiHud.hideGazeLabel();
@@ -454,6 +473,11 @@ export class MemoryPalace extends BaseScriptComponent {
       this.flash("Next locus — follow the ping",
         this.camera.getForwardPosition(80, false));
     } else {
+      // Seed of DESIGN.md's mastery-melody: completion plays the rising
+      // solfeggio phrase (396→528→639→852) — the plan is for mastery tiers
+      // to append notes to this exact phrase until the palace plays it whole.
+      this.gems.playTrackAt(COMPLETE_SFX,
+        this.camera.getForwardPosition(80, false), 0.5);
       const msg = "Route complete — " + this.trainRemembered + "/" +
         this.palace.memories.length + " remembered";
       this.exitTrain();
@@ -527,6 +551,10 @@ export class MemoryPalace extends BaseScriptComponent {
     // FRAME = the confirm gesture (v1): grab the still NOW, cropped around the
     // confirmed anchor's screen projection — both free-float and surface-pin.
     this.pendingSnap = this.snaps.capture(this.reticle.getPoint(), this.camera.getComponent());
+    if (this.pendingSnap !== null) {
+      // The capture moment's sound: crystalline 852 Hz etch at the anchor.
+      this.gems.playTrackAt(SHUTTER_SFX, this.reticle.getPoint(), 0.38);
+    }
     this.uiHud.hideStatus();
     // Caption-style card: seed at the lower-third target, then soft-follow.
     const seed = this.cardTargetPose();
@@ -721,6 +749,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.uiHud.showMemoryCard(rec.transcript, pos, quat.lookAt(toCam, upRef),
       rec.enhance !== undefined, this.state === "EXPLORE");
     this.uiHud.setCardPhoto(this.cardPhotoFor(rec));   // both cards get the photo
+    this.gems.playTrackAt(CARD_OPEN_SFX, base, 0.3);   // bloom-open arpeggio
     if (this.state === "EXPLORE") {
       // Select = full playback: the whisper's TTS cache at full voice (shared
       // with the gaze speak button; the whisper itself yields while the card
@@ -841,6 +870,15 @@ export class MemoryPalace extends BaseScriptComponent {
     this.flash("Memory deleted", deletedPos !== null
       ? new vec3(deletedPos.x, deletedPos.y + 10, deletedPos.z)
       : this.camera.getForwardPosition(80, false));
+  }
+
+  /** User-driven card close: reverse bloom (programmatic teardowns stay silent). */
+  private onCardCloseTapped(): void {
+    if (this.selectedMemoryId !== null) {
+      const p = this.gems.basePosition(this.selectedMemoryId);
+      if (p !== null) this.gems.playTrackAt(CARD_CLOSE_SFX, p, 0.22);
+    }
+    this.closeMemoryCard();
   }
 
   private closeMemoryCard(): void {

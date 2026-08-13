@@ -1,5 +1,36 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Wed Aug 12, later still — The palace retunes itself (solfeggio audio)
+
+**Prompt:** "ok let's do the audio polish. I think we should aim for
+somethiing more light, airy and solfreggio" (+ links to the
+HowStuffWorks solfeggio-frequencies article and a solfeggio music video)
+
+**Increment:** the entire SFX family regenerated from one script
+(`tempAssetGen/gen_sfx_solfeggio.js`) around two shared voices — struck
+crystal (low-index FM, 3–40 ms soft attacks) and band-passed breath —
+with pitch material drawn ONLY from **396/417/528/639/741/852 Hz +
+octaves**, replacing C-pentatonic as the "one key, one family" system.
+Four reworks by same-filename swap (`twinkle` shimmer, `gazehum` breathy
+396 pad — loop-safe by construction: integer-cycle duration,
+loop-periodic LFOs, spliced noise tail — `place` chime-settle with no
+thump, `vaporize` reverse-shimmer) and eight NEW cues wired positionally:
+`shutter` (852 etch at the crop instant — the snapshot finally sounds),
+`cardopen`/`cardclose` arpeggio pair (close only on user taps;
+programmatic teardowns stay silent), Train `reveal` bloom, the grade
+trio (Remembered 528+639+852 triad · Almost plain 417 · **Forgot soft
+warm 396+198, the quietest — never punishing**), and `complete`, the
+rising 396→528→639→852 phrase seeding DESIGN's mastery-melody. Gazehum
+loop corrected to LowPower per the ambient rule. Volumes 0.22–0.5 per
+the brightness hierarchy. Nothing cut.
+
+**Verification:** one driven pass with AudioPlayer open-lines as
+evidence — shutter at the exact crop instant, landing, card open/close,
+reveal, both driven grades each followed by the completion motif.
+Compile + boot clean. **Timbre judgment deliberately left to the user's
+ears** — logs prove the right clip fires at the right moment, not that
+it sounds airy.
+
 ## Wed Aug 12, late night — Memories get photographs (2D snapshot capture)
 
 **Prompt:** "ok do the 2d snapshot cpature" (after a what's-left review
