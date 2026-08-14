@@ -234,6 +234,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private gazeDebugRoot!: SceneObject
   private gazeDebugText: Text | null = null
   private wantGazeDebug = false
+  private gazeLabelPlate: BackPlate | null = null
+  /** Hand-ray hover over the gaze label — the debug box's explicit trigger. */
+  private _onGazeLabelHover = new Event<boolean>()
+  get onGazeLabelHover(): PublicApi<boolean> { return this._onGazeLabelHover.publicApi() }
   private memCardActionRow: SceneObject | null = null
   private memCardEnhanceRow: SceneObject | null = null
   private memCardConjureRow: SceneObject | null = null
@@ -598,6 +602,12 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = false
     if (this.memCardBackRow !== null) this.memCardBackRow.enabled = false
     if (this.memCardPhotoRow !== null) this.memCardPhotoRow.enabled = false
+    // The gaze label's own Interactable (every BackPlate makes one) exists
+    // only after OnStart — wire the debug-box hover trigger here.
+    if (this.gazeLabelPlate !== null && this.gazeLabelPlate.interactable) {
+      this.gazeLabelPlate.interactable.onHoverEnter.add(() => this._onGazeLabelHover.invoke(true))
+      this.gazeLabelPlate.interactable.onHoverExit.add(() => this._onGazeLabelHover.invoke(false))
+    }
     // Photo frame → white. BackPlate has no light style; its RoundedRectangle
     // is private and only exists after OnStart, so recolor here (post-init),
     // in the brand's lavender-white rather than clinical #fff.
@@ -1309,6 +1319,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.gazeLabelRoot.createComponent("Component.Canvas")
     const plate = this.gazeLabelRoot.createComponent(BackPlate.getTypeName()) as BackPlate
     plate.style = "dark"
+    this.gazeLabelPlate = plate   // hover source for the debug box (post-init)
     this.gazeLabelRoot.createComponent(Billboard.getTypeName())
 
     const content = this.obj(this.gazeLabelRoot, "Content", new vec3(0, 0, 0.6))

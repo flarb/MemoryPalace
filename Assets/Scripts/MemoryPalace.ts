@@ -84,7 +84,6 @@ const GAZE_RANGE = 500;                         // cm — gaze reveal reach
 const GAZE_DWELL_S = 0.8;                       // hold before the label blooms
 const GAZE_GRACE_S = 1.2;                       // label lingers after gaze leaves
 const GAZE_LABEL_LIFT = 11;                     // cm above the gem
-const GAZE_DEBUG_DWELL_S = 2.5;                 // extra hover past reveal → prompt debug box (edit mode)
 const GAZE_DEBUG_RAISE = 7;                     // cm ABOVE the gaze label — below covered the object (user)
 const FLASH_GEM_LIFT = 26;                      // cm above a gem — status pills must clear the gaze label at +11 (plate + bob)
 
@@ -147,7 +146,6 @@ export class MemoryPalace extends BaseScriptComponent {
   private gazeDwell = 0;
   private gazeRevealed = false;
   private gazeGrace = 0;
-  private gazeDebugShown = false;
   private gazeAudio: AudioComponent | null = null;
 
   onAwake() {
@@ -178,6 +176,7 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onCardConjure.add(() => this.onCardConjure());
       this.uiHud.onCardOk.add(() => this.onCardOk());
       this.uiHud.onRouteMove.add((delta) => this.onRouteMove(delta));
+      this.uiHud.onGazeLabelHover.add((on) => this.onGazeLabelHover(on));
       this.uiHud.onGazeSpeak.add(() => this.speakGazedMemory());
       this.uiHud.onExplore.add(() => this.requestMode("explore"));
       this.uiHud.onTrain.add(() => this.requestMode("train"));
@@ -1219,22 +1218,6 @@ export class MemoryPalace extends BaseScriptComponent {
           this.uiHud.setGazeLabelPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT, p.z));
           this.uiHud.setGazeDebugPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT + GAZE_DEBUG_RAISE, p.z));
         }
-        // Debug tier (edit sessions only): keep hovering past the reveal and
-        // the routed generation prompt appears — hover off and it's gone.
-        if (this.state === "SESSION" && !this.gazeDebugShown &&
-            this.gazeDwell >= GAZE_DWELL_S + GAZE_DEBUG_DWELL_S && this.palace !== null) {
-          for (const m of this.palace.memories) {
-            if (m.id !== bestId) continue;
-            const meta = (m.routeKind !== undefined ? m.routeKind : "unrouted") +
-              " · " + (m.anim !== undefined ? m.anim : "idle") +
-              " · " + (m.vfx !== undefined ? m.vfx : "no vfx");
-            const prompt = m.routePrompt !== undefined ? m.routePrompt : "(no generation prompt yet)";
-            this.uiHud.showGazeDebug(meta + "\n" + prompt);
-            this.gazeDebugShown = true;
-            print("MemoryPalace: gaze debug for \"" + m.transcript + "\" — " + meta);
-            break;
-          }
-        }
       }
       return;
     }
@@ -1287,6 +1270,34 @@ export class MemoryPalace extends BaseScriptComponent {
       });
   }
 
+  /**
+   * Debug box trigger: hand-ray hover over the gaze label (edit sessions).
+   * Explicit intent — the old extra-dwell trigger fired while you were just
+   * READING the label (user report). Hover off = gone.
+   */
+  private onGazeLabelHover(on: boolean): void {
+    if (!on) {
+      this.uiHud.hideGazeDebug();
+      return;
+    }
+    if (this.state !== "SESSION" || !this.gazeRevealed ||
+        this.gazeTargetId === null || this.palace === null) return;
+    for (const m of this.palace.memories) {
+      if (m.id !== this.gazeTargetId) continue;
+      const meta = (m.routeKind !== undefined ? m.routeKind : "unrouted") +
+        " · " + (m.anim !== undefined ? m.anim : "idle") +
+        " · " + (m.vfx !== undefined ? m.vfx : "no vfx");
+      const prompt = m.routePrompt !== undefined ? m.routePrompt : "(no generation prompt yet)";
+      this.uiHud.showGazeDebug(meta + "\n" + prompt);
+      const p = this.gems.basePosition(m.id);
+      if (p !== null) {
+        this.uiHud.setGazeDebugPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT + GAZE_DEBUG_RAISE, p.z));
+      }
+      print("MemoryPalace: gaze debug for \"" + m.transcript + "\" — " + meta);
+      return;
+    }
+  }
+
   private clearGaze(): void {
     if (this.gazeAudio !== null) this.gazeAudio.stop(false);
     this.gems.setGazeRing(null);
@@ -1296,7 +1307,6 @@ export class MemoryPalace extends BaseScriptComponent {
     this.gazeDwell = 0;
     this.gazeRevealed = false;
     this.gazeGrace = 0;
-    this.gazeDebugShown = false;
   }
 
   /** Lower-third caption pose: ahead of gaze, dropped in the view plane. */
