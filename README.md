@@ -5,7 +5,7 @@
 <h3 align="center"><em>Organize your mind in the world it already knows.</em></h3>
 
 <p align="center">
-  An AR memory-palace trainer for <a href="https://www.spectacles.com/">Snap Spectacles</a> —
+  An AR memory-palace trainer for <strong>SPECS</strong> —
   speak a memory, pin it to a real place, conjure bizarre imagery for it, then walk your
   palace and train until you don't need the Lens at all.
 </p>
@@ -47,8 +47,8 @@ order, the next locus wears a breathing ring, and memories are reorderable from 
   hatch chord, grade tones). Overlapping sounds harmonize by construction.
 - **Never block, never error-wall** — generation is async and optional; failures retry
   silently once, then degrade to the gem. Offline routing falls back locally.
-- **Additive-display honest** — prompts demand luminous subjects because on Specs,
-  dark pixels are invisible.
+- **Additive-display honest** — prompts demand luminous subjects because on SPECS'
+  additive display, dark pixels are invisible.
 
 ## Built on
 
@@ -64,7 +64,7 @@ Remote Service Gateway → **GPT-4.1-nano** (mnemonic router) · **Snap3D** (tex
 2. Generate Remote Service Gateway tokens (**Window → Remote Service Gateway Token**) —
    the AI features (router, conjuring, TTS) need them; everything else runs without.
 3. Preview works fully in-editor: the mic falls back to a canned transcript, and SIK's
-   mouse interactor drives every pinch. On Spectacles, the sigil rides the back of your
+   mouse interactor drives every pinch. On SPECS, the sigil rides the back of your
    left hand.
 
 ## CLAD
