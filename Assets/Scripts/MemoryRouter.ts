@@ -57,7 +57,10 @@ const SYSTEM_PROMPT =
   "The user will walk past this object later and must instantly recall the memory. " +
   "Reply with ONLY a JSON object, no prose and no code fences.\n" +
   "Fields:\n" +
-  "  label: 2-4 word punchy title, Title Case, no trailing punctuation.\n" +
+  "  label: 2-4 word punchy title OF THE MEMORY AS SPOKEN, Title Case, no " +
+  "trailing punctuation. Never describe the artwork: no style, color, or " +
+  "lighting words (luminous, glowing, bright, pastel...) unless the user " +
+  "actually said them. \"a race car\" -> \"Race Car\", never \"Luminous Race Car\".\n" +
   "  kind: \"mesh\" for objects, things, concepts (nouns); \"image\" for people, " +
   "actions, events, social moments (verbs).\n" +
   "  prompt: a BIZARRE, VIVID, exaggerated image of the memory — the weirder the " +

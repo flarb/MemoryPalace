@@ -231,6 +231,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardRoot!: SceneObject
   private gazeLabelRoot!: SceneObject
   private gazeLabelText: Text | null = null
+  private gazeDebugRoot!: SceneObject
+  private gazeDebugText: Text | null = null
+  private wantGazeDebug = false
   private memCardActionRow: SceneObject | null = null
   private memCardEnhanceRow: SceneObject | null = null
   private memCardConjureRow: SceneObject | null = null
@@ -306,6 +309,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.buildDoneLabel()
     this.buildStatusLine()
     this.buildGazeLabel()
+    this.buildGazeDebug()
 
     this.comingSoonClear = this.createEvent("DelayedCallbackEvent") as DelayedCallbackEvent
     this.comingSoonClear.bind(() => { if (this.comingSoonText) this.comingSoonText.text = "" })
@@ -431,6 +435,21 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   setGazeLabelPosition(worldPos: vec3): void {
     if (!this.initDone || !this.wantGazeLabel) return
     this.gazeLabelRoot.getTransform().setWorldPosition(worldPos)
+  }
+
+  /** Debug prompt box under the gaze label (edit-mode extended hover). */
+  showGazeDebug(text: string): void {
+    if (this.gazeDebugText !== null) {
+      const MAX = 170
+      this.gazeDebugText.text = text.length > MAX ? text.slice(0, MAX) + "…" : text
+    }
+    this.wantGazeDebug = true
+    this.applyVisibility()
+  }
+  hideGazeDebug(): void { this.wantGazeDebug = false; this.applyVisibility() }
+  setGazeDebugPosition(worldPos: vec3): void {
+    if (!this.initDone || !this.wantGazeDebug) return
+    this.gazeDebugRoot.getTransform().setWorldPosition(worldPos)
   }
 
   /** Drive the transcript card's full pose (soft head-follow caption). */
@@ -569,6 +588,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.doneLabelRoot.getTransform().setLocalPosition(this.realPos["donelabel"])
     this.statusRoot.getTransform().setLocalPosition(this.realPos["status"])
     this.gazeLabelRoot.getTransform().setLocalPosition(this.realPos["gazelabel"])
+    this.gazeDebugRoot.getTransform().setLocalPosition(this.realPos["gazedebug"])
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = false
     if (this.memCardConjureRow !== null) this.memCardConjureRow.enabled = false
     if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = false
@@ -600,6 +620,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.doneLabelRoot.enabled = this.wantDoneLabel
     this.statusRoot.enabled = this.wantStatus
     this.gazeLabelRoot.enabled = this.wantGazeLabel
+    this.gazeDebugRoot.enabled = this.wantGazeDebug
   }
 
   /** Swap between the modal's main buttons, the palace picker, and help. */
@@ -1251,6 +1272,33 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.flexChild(col, {w: 4, h: 1.2}, (c) => {
       this.textIn(c, "Done", "Caption", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEAL,
+      })
+    })
+  }
+
+  /** Debug prompt box: shown under the gaze label after an extended hover in
+   *  edit sessions — the routed generation prompt, for tuning the router. */
+  private buildGazeDebug(): void {
+    this.gazeDebugRoot = this.obj(this.sceneObject, "GazeDebug", FAR_POS)
+    this.realPos["gazedebug"] = new vec3(0, 0, 0)
+    this.gazeDebugRoot.createComponent("Component.Canvas")
+    const plate = this.gazeDebugRoot.createComponent(BackPlate.getTypeName()) as BackPlate
+    plate.style = "dark"
+    this.gazeDebugRoot.createComponent(Billboard.getTypeName())
+
+    const content = this.obj(this.gazeDebugRoot, "Content", new vec3(0, 0, 0.6))
+    const col = this.flexColumn(content, 22, -1, {
+      gap: 0.3, padX: 1, padY: 0.8,
+      justify: FlexJustify.Center, align: FlexAlign.Center,
+    })
+    const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
+    flex.onLayoutComplete.add((r) => {
+      plate.size = new vec2(r.containerWidth, r.containerHeight)
+    })
+    this.flexChild(col, {w: 20, h: 4.6}, (c) => {
+      this.gazeDebugText = this.textIn(c, "", "Caption", {
+        font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
+        wrap: {w: 20, h: 4.6},
       })
     })
   }
