@@ -128,6 +128,9 @@ export class MemoryPalace extends BaseScriptComponent {
    *  regens don't gate; blocking capture for a minute after load would read
    *  as broken. */
   private conjuringIds: { [id: string]: boolean } = {};
+  /** One silent retry per conjure attempt — Snap3D fails intermittently
+   *  ("ALD verification failed" seconds after an identical call succeeded). */
+  private conjureRetried: { [id: string]: boolean } = {};
   /** Fresh capture whose routing is still in flight. Gates the swirl through
    *  the capture→chip gap — without it the swirl reappeared for the ~2 s the
    *  LLM took, then vanished when the chip opened (user: "timing issue"). */
@@ -1035,13 +1038,13 @@ export class MemoryPalace extends BaseScriptComponent {
   }
 
   /** Kick generation for a memory's stored enhance spec; visuals hatch async. */
-  private startEnhance(rec: MemoryRecord, quiet: boolean): void {
+  private startEnhance(rec: MemoryRecord, quiet: boolean, isRetry: boolean = false): void {
     if (rec.enhance === undefined) return;
     const flashAt = (): vec3 | null => {
       const p = this.gems.basePosition(rec.id);
       return p !== null ? new vec3(p.x, p.y + FLASH_GEM_LIFT, p.z) : null;
     };
-    if (!quiet) {
+    if (!quiet && !isRetry) {
       this.flash(rec.enhance.kind === "mesh" ? "Conjuring object…" : "Conjuring image…", flashAt());
       // The forge lights: rising solfeggio shimmer at the gem (DESIGN's
       // "conjure accepted" beat — the button's own click was just a beep).
@@ -1049,7 +1052,31 @@ export class MemoryPalace extends BaseScriptComponent {
       if (at !== null) this.gems.playTrackAt(CONJURE_SFX, at, 0.55);
       this.conjureBegan(rec.id);   // swirl hides until this conjure resolves
     }
-    print("MemoryPalace: conjuring " + rec.enhance.kind + " for \"" + rec.transcript + "\"");
+    // Shared failure path: one silent retry (Snap3D flakes — an identical
+    // submit succeeded seconds earlier), THEN the user-facing failure.
+    const fail = (msg: string): void => {
+      this.gems.setConjuring(rec.id, false);
+      print("MemoryPalace: conjure failed — " + msg);
+      if (!this.conjureRetried[rec.id] && rec.enhance !== undefined) {
+        this.conjureRetried[rec.id] = true;
+        print("MemoryPalace: retrying conjure once for " + rec.id);
+        const d = this.createEvent("DelayedCallbackEvent") as DelayedCallbackEvent;
+        d.bind(() => {
+          if (this.palace !== null && rec.enhance !== undefined) {
+            this.startEnhance(rec, quiet, true);   // gate stays held throughout
+          } else {
+            this.conjureEnded(rec.id);
+          }
+        });
+        d.reset(1.5);
+        return;
+      }
+      delete this.conjureRetried[rec.id];
+      this.conjureEnded(rec.id);
+      this.flash("Generation failed — try again", flashAt(), FLASH_FAIL_S);
+    };
+    print("MemoryPalace: conjuring " + rec.enhance.kind + " for \"" + rec.transcript + "\"" +
+      (isRetry ? " (retry)" : ""));
     this.gems.setConjuring(rec.id, true);   // spinning halo + forge loop while we wait
 
     if (rec.enhance.kind === "image") {
@@ -1057,6 +1084,7 @@ export class MemoryPalace extends BaseScriptComponent {
         .then((tex) => {
           this.gems.setConjuring(rec.id, false);
           this.conjureEnded(rec.id);
+          delete this.conjureRetried[rec.id];
           if (this.gems.setEnhancedImage(rec.id, tex)) {
             this.gems.setGlowTint(rec.id, averageTextureColor(tex));
             this.playHatch(rec.id, quiet);
@@ -1064,12 +1092,7 @@ export class MemoryPalace extends BaseScriptComponent {
             print("MemoryPalace: image conjured for " + rec.id);
           }
         })
-        .catch((msg) => {
-          this.gems.setConjuring(rec.id, false);
-          this.conjureEnded(rec.id);
-          this.flash("Generation failed — try again", flashAt(), FLASH_FAIL_S);
-          print("MemoryPalace: image conjure failed — " + msg);
-        });
+        .catch((msg) => fail("image: " + msg));
     } else {
       this.enhancer.generateMesh(rec.id, rec.enhance.prompt,
         (preview) => {
@@ -1082,6 +1105,7 @@ export class MemoryPalace extends BaseScriptComponent {
           // The base mesh IS the hatch — the swirl unlocks here, not at the
           // refined swap ~60 s later (which is invisible bookkeeping).
           this.conjureEnded(rec.id);
+          delete this.conjureRetried[rec.id];
           if (this.gems.setEnhancedMesh(rec.id, baseMesh, this.enhanceMeshMat)) {
             this.playHatch(rec.id, quiet);
             this.flash("✓ Object conjured (refining…)", flashAt());
@@ -1092,12 +1116,7 @@ export class MemoryPalace extends BaseScriptComponent {
           this.gems.setEnhancedMesh(rec.id, refinedMesh, this.enhanceMeshMat);
           print("MemoryPalace: refined mesh swapped in for " + rec.id);
         },
-        (msg) => {
-          this.gems.setConjuring(rec.id, false);
-          this.conjureEnded(rec.id);
-          this.flash("Generation failed — try again", flashAt(), FLASH_FAIL_S);
-          print("MemoryPalace: mesh conjure failed — " + msg);
-        });
+        (msg) => fail("mesh: " + msg));
     }
   }
 
