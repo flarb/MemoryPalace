@@ -29,6 +29,7 @@ export class SnapshotService {
   private cameraModule: CameraModule = require("LensStudio:CameraModule");
   private camTex: Texture | null = null;
   private frameSeen = false;
+  private cameraId: CameraModule.CameraId | null = null;
 
   /** Lazy camera spin-up (post-start only — e.g. first wizard start). */
   ensureCamera(): void {
@@ -38,6 +39,7 @@ export class SnapshotService {
       req.cameraId = global.deviceInfoSystem.isEditor()
         ? CameraModule.CameraId.Default_Color
         : CameraModule.CameraId.Right_Color;
+      this.cameraId = req.cameraId;
       this.camTex = this.cameraModule.requestCamera(req);
       const provider = this.camTex.control as CameraTextureProvider;
       // Keeps the pipeline warm AND proves frames are flowing before we read.
@@ -64,8 +66,39 @@ export class SnapshotService {
       const w = this.camTex.getWidth();
       const h = this.camTex.getHeight();
       if (w < 8 || h < 8) return null;
-      // Anchor → screen (0..1, origin top-left) → texture px (origin bottom-left).
-      const s = renderCam.worldSpaceToScreenSpace(anchorWorld);
+      // Anchor → normalized frame UV (0..1, origin top-left), through the
+      // CAMERA's own model when the platform provides one. The old path ran
+      // the projection through the RENDER camera and pasted its screen space
+      // onto the camera texture's pixel grid — two different frusta (editor
+      // preview is ~2:1 portrait, the feed is ~7:8), so surface placements
+      // below the gaze line cropped toward frame center (user-reported).
+      // DeviceCamera.project uses this feed's intrinsics + extrinsics, which
+      // also absorbs the Right_Color offset on device.
+      let s: vec2 | null = null;
+      try {
+        if (this.cameraId !== null) {
+          const dc = global.deviceInfoSystem.getTrackingCameraForId(this.cameraId);
+          if (dc) {
+            // World → device-reference space (the camera object carries
+            // DeviceTracking, so its transform IS the device pose).
+            const toDevice = renderCam.getSceneObject().getTransform().getInvertedWorldTransform();
+            const uv = dc.project(toDevice.multiplyPoint(anchorWorld));
+            if (isFinite(uv.x) && isFinite(uv.y)) {
+              s = uv;
+              print("Snapshot: anchor via DeviceCamera intrinsics → uv (" +
+                uv.x.toFixed(3) + ", " + uv.y.toFixed(3) + ")");
+            }
+          }
+        }
+      } catch (e) {
+        print("Snapshot: DeviceCamera projection unavailable (" + e + ") — render-cam fallback");
+      }
+      if (s === null) {
+        // Fallback: render-camera screen space (aspect mismatch and all) —
+        // still yields a plausible centered-ish crop when intrinsics are
+        // missing, and a photo beats no photo.
+        s = renderCam.worldSpaceToScreenSpace(anchorWorld);
+      }
       const side = Math.floor(h * CROP_FRACTION);
       let cx = Math.floor(s.x * w);
       let cy = Math.floor((1 - s.y) * h);
