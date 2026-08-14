@@ -17,6 +17,7 @@ import { EnhanceKind } from "./EnhanceService";
 import { AnimRecipe, VfxRecipe } from "./MemoryRouter";
 
 const VAPORIZE_SFX = requireAsset("../GeneratedSFX/vaporize.wav") as AudioTrackAsset;
+const FORGE_SFX = requireAsset("../GeneratedSFX/forge.wav") as AudioTrackAsset;
 const IMAGE_MAT = requireAsset("../Materials/ImageMaterial.mat") as Material;
 
 const ENHANCED_TARGET_CM = 14;    // conjured mesh max dimension
@@ -691,6 +692,13 @@ export class GemFactory {
       const rmv = ring.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
       rmv.mesh = this.conjureRingMesh;
       rmv.mainMaterial = this.burstMat;
+      // Furnace-shimmer loop (DESIGN: "forging — quiet, positional"). Hosted
+      // on the ring, so setConjuring(false) destroying the ring stops it.
+      const ac = ring.createComponent("Component.AudioComponent") as AudioComponent;
+      ac.audioTrack = FORGE_SFX;
+      ac.playbackMode = Audio.PlaybackMode.LowPower;   // ambient loop (specs-audio)
+      ac.volume = 0.22;
+      ac.play(-1);
       this.conjureRings.push({ memoryId: memoryId, obj: ring });
       return;
     }
@@ -911,7 +919,7 @@ export class GemFactory {
       switch (g.anim) {
         case "spin":  spinRate = (Math.PI * 2) / 3; break;
         case "bob":   bobAmp *= 3.2; bobHz = 0.5; break;
-        case "pulse": scaleMul = 1 + 0.18 * Math.sin(t * Math.PI * 2 * 1.6); break;
+        case "pulse": scaleMul = 1 + 0.18 * Math.sin(t * Math.PI * 2 * 0.8); break;   // was 1.6 Hz — frantic on a 14 cm object (user call)
         case "orbit": orbitR = ORBIT_RADIUS_CM; break;
         case "swell": scaleMul = 1 + 0.30 * Math.sin(t * Math.PI * 2 * 0.35); break;
         default: break;   // null / retired recipe → baseline idle

@@ -233,6 +233,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardRouteRow: SceneObject | null = null
   private memCardRouteText: Text | null = null
   private memCardConjureLabel: Text | null = null
+  private memCardAltLabel: Text | null = null
+  private memCardAltKind: "mesh" | "image" | null = null
   private memCardFlex: FlexLayout | null = null
   private memCardCloseX: SceneObject | null = null
   private memCardMode: "main" | "enhance" | "readonly" | "prompt" | "grade" = "main"
@@ -1066,27 +1068,19 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         () => this._onCardConjure.invoke())
     })
 
-    // Override stack (revealed by Enhance): the caption is what tells you the
-    // buttons below are a DIFFERENT choice, not a repeat of the primary.
-    // Built ENABLED so its buttons initialize during the FAR_POS park window
-    // (G3); applyInitialVisibility hides it, and toggles only happen post-init.
-    this.memCardEnhanceRow = this.flexChild(col, {w: 21, h: 5}, (c) => {
-      const stack = this.flexColumn(c, 21, 5, {
-        gap: 0.4, justify: FlexJustify.Center, align: FlexAlign.Center,
+    // The alternative (revealed by Enhance): ONE button offering only the
+    // OPPOSITE of the router's pick. Offering both kinds made the primary and
+    // its own kind's override identical twins — the user rightly couldn't
+    // tell "Conjure 3D object" and "3D" apart, because there was nothing to
+    // tell apart. Built ENABLED so its button initializes during the FAR_POS
+    // park window (G3); applyInitialVisibility hides it.
+    this.memCardEnhanceRow = this.flexChild(col, {w: 21, h: 2.8}, (c) => {
+      const row = this.flexRow(c, 21, 2.8, {
+        justify: FlexJustify.Center, align: FlexAlign.Center,
       })
-      this.flexChild(stack, {w: 21, h: 1.4}, (t) => {
-        this.textIn(t, "or pick a different kind", "Caption", {
-          font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
-        })
-      })
-      this.flexChild(stack, {w: 21, h: 2.8}, (r) => {
-        const row = this.flexRow(r, 21, 2.8, {
-          justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
-        })
-        // No "Back" here — it read as a third imagery choice. Enhance toggles
-        // this block shut, and the corner X dismisses the card outright.
-        this.rowButton(row, "3D", 6, COL_LVIOLET, () => this._onCardEnhanceMesh.invoke())
-        this.rowButton(row, "Image", 7.5, COL_LVIOLET, () => this._onCardEnhanceImage.invoke())
+      this.memCardAltLabel = this.rowButton(row, "Conjure image instead", 14, COL_LVIOLET, () => {
+        if (this.memCardAltKind === "mesh") this._onCardEnhanceMesh.invoke()
+        else if (this.memCardAltKind === "image") this._onCardEnhanceImage.invoke()
       })
     })
 
@@ -1138,7 +1132,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
     if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = mode === "main"
     if (this.memCardConjureRow !== null) this.memCardConjureRow.enabled = mode === "enhance"
-    if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
+    if (this.memCardEnhanceRow !== null) {
+      this.memCardEnhanceRow.enabled = mode === "enhance" && this.memCardAltKind !== null
+    }
     if (this.memCardRemoveRow !== null) {
       this.memCardRemoveRow.enabled = mode === "enhance" && this.cardHasEnhance
     }
@@ -1160,13 +1156,22 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Flip an open card back to its main panel (OK on an existing memory). */
   showMemCardMain(): void { this.setMemCardMode("main") }
 
-  /** Name the router's pick on the primary conjure button, so "Conjure" and
-   *  the 3D / Image overrides aren't three unlabelled ways to do one thing. */
+  /** Name the router's pick on the primary conjure button, and offer ONLY the
+   *  opposite kind on the alternative button below it. */
   setConjureKind(kind: "mesh" | "image" | null): void {
-    if (this.memCardConjureLabel === null) return
-    this.memCardConjureLabel.text = kind === "mesh" ? "Conjure 3D object"
-      : kind === "image" ? "Conjure image"
-      : "Conjure imagery"
+    if (this.memCardConjureLabel !== null) {
+      this.memCardConjureLabel.text = kind === "mesh" ? "Conjure 3D object"
+        : kind === "image" ? "Conjure image"
+        : "Conjure imagery"
+    }
+    this.memCardAltKind = kind === "mesh" ? "image" : kind === "image" ? "mesh" : null
+    if (this.memCardAltLabel !== null && this.memCardAltKind !== null) {
+      this.memCardAltLabel.text = this.memCardAltKind === "mesh"
+        ? "Conjure 3D object instead" : "Conjure image instead"
+    }
+    // Alt row visibility depends on both the mode and whether an alternative
+    // exists — re-apply the current mode so the layout rescan runs.
+    if (this.initDone) this.setMemCardMode(this.memCardMode)
   }
 
   /** Button inside an existing flex row (memory card actions).

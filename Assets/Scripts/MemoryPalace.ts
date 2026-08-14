@@ -120,6 +120,11 @@ export class MemoryPalace extends BaseScriptComponent {
   private pendingSnap: Snapshot | null = null;
   /** Set while the post-capture chip is open: X cancels THIS memory only. */
   private freshCaptureId: string | null = null;
+  /** User-initiated conjures in flight — the capture swirl hides while any
+   *  are pending (user call: no new memory mid-conjure). Quiet load-time
+   *  regens don't gate; blocking capture for a minute after load would read
+   *  as broken. */
+  private conjuringIds: { [id: string]: boolean } = {};
   private hintObj: SceneObject | null = null;
   private hintImage: Image | null = null;
 
@@ -314,6 +319,9 @@ export class MemoryPalace extends BaseScriptComponent {
       this.spawnMemoryGem(rec);
       // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
       if (rec.enhance !== undefined) this.startEnhance(rec, true);
+      // Backfill routing for pre-router saves: labels + recipes + a working
+      // conjure offer. Quiet — no chips pop on load.
+      if (rec.label === undefined) this.routeMemoryFor(rec, false);
     }
     this.refreshRoute();
     this.enterSession(true);
@@ -321,6 +329,7 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private enterSession(restored: boolean): void {
     this.uiHud.hideModal();
+    this.conjuringIds = {};   // stale in-flight gates die with their session
     this.sigil.setChipOnly(false);   // full cluster — sessions are for editing
     this.sigil.setActive(true);
     this.setState("SESSION");
@@ -850,7 +859,7 @@ export class MemoryPalace extends BaseScriptComponent {
    * Step 4 — "Conjure imagery?"). Routing never blocks and never error-walls:
    * `routeMemory` resolves to a local fallback rather than rejecting.
    */
-  private routeMemoryFor(rec: MemoryRecord): void {
+  private routeMemoryFor(rec: MemoryRecord, openChip: boolean = true): void {
     const palaceAtRequest = this.palace;
     routeMemory(rec.transcript).then((route: MemoryRoute) => {
       // The session may have ended, or this memory been deleted, while the
@@ -872,9 +881,9 @@ export class MemoryPalace extends BaseScriptComponent {
       this.gems.setRecipes(rec.id, route.animRecipe, route.vfxRecipe);
       this.store.save(this.palace);
 
-      // The conjure chip: only when the user is idle in the session (no card
-      // open, nothing selected) and the router actually has imagery to offer.
-      if (this.state === "SESSION" && this.selectedMemoryId === null &&
+      // The conjure chip: only for fresh captures, when the user is idle in
+      // the session (no card open) — never for load-time backfill routing.
+      if (openChip && this.state === "SESSION" && this.selectedMemoryId === null &&
           rec.routeKind !== undefined) {
         this.openConjureChip(rec);
       }
@@ -915,17 +924,16 @@ export class MemoryPalace extends BaseScriptComponent {
       if (m.id === id) { rec = m; break; }
     }
     if (rec === null) return;
-    if (rec.routeKind === undefined || rec.routePrompt === undefined) {
-      // Routing hasn't landed (or failed) — fall back to the manual kinds.
-      this.flash("Still reading that memory — pick 3D or Image",
-        this.gems.basePosition(id));
-      return;
-    }
     if (this.enhancer.isBusy(id)) {
       this.flash("Already conjuring this memory", this.gems.basePosition(id));
       return;
     }
-    rec.enhance = { kind: rec.routeKind as EnhanceKind, prompt: rec.routePrompt };
+    // Unrouted (old save, routing offline): the styled mesh template stands in
+    // — the primary button must never be dead.
+    const kind: EnhanceKind = rec.routeKind === "image" ? "image" : "mesh";
+    const prompt = rec.routePrompt !== undefined
+      ? rec.routePrompt : buildEnhancePrompt(kind, rec.transcript);
+    rec.enhance = { kind: kind, prompt: prompt };
     this.store.save(this.palace);
     this.closeMemoryCard();
     this.startEnhance(rec, false);
@@ -970,6 +978,25 @@ export class MemoryPalace extends BaseScriptComponent {
     print("MemoryPalace: enhancement removed for " + id);
   }
 
+  /** A user-initiated conjure began: gate the swirl until it lands. */
+  private conjureBegan(id: string): void {
+    this.conjuringIds[id] = true;
+    this.applyConjureGate();
+  }
+
+  /** A conjure resolved (hatch or fail). Safe to call twice — map-guarded. */
+  private conjureEnded(id: string): void {
+    if (this.conjuringIds[id] === undefined) return;
+    delete this.conjuringIds[id];
+    this.applyConjureGate();
+  }
+
+  private applyConjureGate(): void {
+    if (this.state !== "SESSION") return;   // other states own chipOnly themselves
+    const busy = Object.keys(this.conjuringIds).length > 0;
+    this.sigil.setChipOnly(busy);   // swirl + "New Memory" label hide; Done stays
+  }
+
   /**
    * The hatch chord at the gem (DESIGN: "crack + particle burst + harmonic
    * bloom"). Quieter on palace-load regens: several gems waking at once
@@ -993,14 +1020,16 @@ export class MemoryPalace extends BaseScriptComponent {
       // "conjure accepted" beat — the button's own click was just a beep).
       const at = this.gems.basePosition(rec.id);
       if (at !== null) this.gems.playTrackAt(CONJURE_SFX, at, 0.55);
+      this.conjureBegan(rec.id);   // swirl hides until this conjure resolves
     }
     print("MemoryPalace: conjuring " + rec.enhance.kind + " for \"" + rec.transcript + "\"");
-    this.gems.setConjuring(rec.id, true);   // spinning halo while we wait
+    this.gems.setConjuring(rec.id, true);   // spinning halo + forge loop while we wait
 
     if (rec.enhance.kind === "image") {
       this.enhancer.generateImage(rec.id, rec.enhance.prompt)
         .then((tex) => {
           this.gems.setConjuring(rec.id, false);
+          this.conjureEnded(rec.id);
           if (this.gems.setEnhancedImage(rec.id, tex)) {
             this.gems.setGlowTint(rec.id, averageTextureColor(tex));
             this.playHatch(rec.id, quiet);
@@ -1010,6 +1039,7 @@ export class MemoryPalace extends BaseScriptComponent {
         })
         .catch((msg) => {
           this.gems.setConjuring(rec.id, false);
+          this.conjureEnded(rec.id);
           this.flash("Conjure failed — try again", flashAt());
           print("MemoryPalace: image conjure failed — " + msg);
         });
@@ -1022,6 +1052,9 @@ export class MemoryPalace extends BaseScriptComponent {
         },
         (baseMesh) => {
           this.gems.setConjuring(rec.id, false);
+          // The base mesh IS the hatch — the swirl unlocks here, not at the
+          // refined swap ~60 s later (which is invisible bookkeeping).
+          this.conjureEnded(rec.id);
           if (this.gems.setEnhancedMesh(rec.id, baseMesh, this.enhanceMeshMat)) {
             this.playHatch(rec.id, quiet);
             this.flash("✓ Object conjured (refining…)", flashAt());
@@ -1034,6 +1067,7 @@ export class MemoryPalace extends BaseScriptComponent {
         },
         (msg) => {
           this.gems.setConjuring(rec.id, false);
+          this.conjureEnded(rec.id);
           this.flash("Conjure failed — try again", flashAt());
           print("MemoryPalace: mesh conjure failed — " + msg);
         });
