@@ -1,5 +1,41 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Fri Aug 14 (evening) — "Why don't you move smoothly?" — real input unlocks real walks
+
+**Prompt:** "how come you don't smoothly move around the room and instead
+just cut to positions?"
+
+**Root cause, admitted:** the camera MCP tool teleports — every move/lookAt
+is an instant snap, and agent tool-calls land seconds apart, so my "walks"
+were slideshows. The injected-gesture lane couldn't help (its keys and
+touches go to the LENS, not the editor's navigator — verified: held-W via
+injection moved nothing, injected drags rotated nothing).
+
+**The unlock: real OS input.** win32 SendInput from PowerShell — a genuine
+left-click to focus the panel, then genuinely held WASD keys and genuinely
+dragged right-button strokes — drives the editor's own per-frame navigation:
+verified 2.8 m of smooth travel from one 1.5 s W-hold, smooth look from
+right-drags (~14 px/°; left-drag is the lens-touch channel, right-drag is
+the camera — discovered empirically). A tiny `drive.ps1` now speaks
+focus / w / s / a / d / turn / tilt / walkturn.
+
+**Then film school, the hard way.** Free-roaming with drag-turns produced
+beautiful smoothness AND wall-staring (turn-direction math kept lying;
+one whole clip is now labeled B-roll). The discipline that worked: **cuts
+between shots, smooth motion within shots** — aim instantly with lookAt
+(that's just a cut, cinema does it constantly), then walk/tilt with real
+input inside the shot. Two clips shot that way (07c Explore, 08c Train
+route) replaced the teleport-walk versions: smooth approach to the bare
+gem, full-size "What lives here?", reveal, grade, cut, walk, repeat across
+all three loci. Two accidental shots kept on their merits: walking THROUGH
+the translucent quiz gem (surreal interior view of the wayfinding ring),
+and the tilt-down that finds the crowned cow from directly above.
+
+**Editor-navigation facts logged:** WASD walks stay at eye height (frame
+low objects by tilting, not hoping); the walk speed is ~1.85 m/s; drags
+must start inside the preview; focus persists across MCP calls but not
+across window activations.
+
 ## Fri Aug 14 (late afternoon) — Reshoot: zoom crop + the three-locus walk
 
 **Prompt:** "it's hared to read the text because it's so small, so we should
