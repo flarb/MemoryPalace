@@ -206,10 +206,16 @@ export class ExploreController {
       ac.playbackMode = Audio.PlaybackMode.LowPower;   // ambient family (specs-audio)
       ac.fadeInTime = 0.12;
       ac.fadeOutTime = 0.2;
-      try {
-        ac.spatialAudio.enabled = true;                // positional on device
-      } catch (e) {
-        print("Explore: spatial audio unavailable here (" + e + ") — volume ramp carries the whisper");
+      // Spatial audio ONLY on device: the editor's spatial pipeline plays the
+      // 24 kHz TTS tracks at the wrong rate — chipmunk pitch (user-reported;
+      // the speaker button's plain one-shot resamples the same track fine).
+      // Device behavior needs its own listen on Saturday's pass.
+      if (!global.deviceInfoSystem.isEditor()) {
+        try {
+          ac.spatialAudio.enabled = true;              // positional on device
+        } catch (e) {
+          print("Explore: spatial audio unavailable (" + e + ") — volume ramp carries the whisper");
+        }
       }
     }
     return this.whisperAudio!;

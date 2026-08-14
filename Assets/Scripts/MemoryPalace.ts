@@ -243,13 +243,10 @@ export class MemoryPalace extends BaseScriptComponent {
       camObj.createComponent("Component.AudioListenerComponent");
     }
 
-    // Faint dwell hum for the gaze reveal (loops while the ring builds).
-    const humObj = global.scene.createSceneObject("GazeHum");
-    humObj.setParent(root);
-    this.gazeAudio = humObj.createComponent("Component.AudioComponent") as AudioComponent;
-    this.gazeAudio.audioTrack = GAZE_HUM;
-    this.gazeAudio.playbackMode = Audio.PlaybackMode.LowPower;   // ambient loop (specs-audio)
-    this.gazeAudio.volume = 0.22;
+    // (The gaze dwell hum lived here — cut on user feedback: "kind of an
+    // annoying sound." The ring + rising motes carry the dwell cue alone;
+    // gazeAudio stays null and every play/stop site null-checks. gazehum.wav
+    // remains in GeneratedSFX if the idea ever earns a second audition.)
   }
 
   private makeAdditive(mat: Material): Material {
