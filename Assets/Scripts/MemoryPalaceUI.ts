@@ -147,6 +147,9 @@ const HELP_PARAS = [
   "memory. Everything saves as you go.",
 ]
 const CARD_W = 24
+const PHOTO_CM = 11.5                 // the snapshot itself
+const PHOTO_FRAME_CM = PHOTO_CM + 1.4 // recessed plate behind it (0.7 cm reveal)
+const PHOTO_Z_LIFT = 0.4              // photo in front of its frame (z-fight guard)
 const PICKER_ROWS = 6
 
 /** Shape of one saved-palace row the main script hands to showPalacePicker. */
@@ -223,6 +226,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardConjureRow: SceneObject | null = null
   private memCardRouteRow: SceneObject | null = null
   private memCardRouteText: Text | null = null
+  private memCardConjureLabel: Text | null = null
+  private memCardFlex: FlexLayout | null = null
   private memCardRemoveRow: SceneObject | null = null
   private memCardReadOnlyRow: SceneObject | null = null
   private memCardPromptRow: SceneObject | null = null
@@ -932,17 +937,28 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
     const content = this.obj(this.memCardRoot, "Content", new vec3(0, 0, 0.6))
     const col = this.flexColumn(content, CARD_W, -1, {
-      gap: 0.8, padX: 1.4, padY: 1.2,
+      gap: 1, padX: 1.4, padY: 1.6,
       justify: FlexJustify.Start, align: FlexAlign.Center,
     })
     const flex = col.getComponent(FlexLayout.getTypeName()) as FlexLayout
+    // Kept so setMemCardMode can re-discover children after toggling rows —
+    // a DISABLED flex child still reserves its slot until the layout rescans,
+    // which is what left a dead band where the hidden rows used to sit.
+    this.memCardFlex = flex
     flex.onLayoutComplete.add((r) => {
       plate.size = new vec2(r.containerWidth, r.containerHeight)
     })
 
-    // Snapshot row: the memory's photo, above the words (hidden when none).
-    this.memCardPhotoRow = this.flexChild(col, {w: 11.5, h: 11.5}, (c) => {
-      const img = c.createComponent("Component.Image") as Image
+    // Snapshot row: the memory's photo in a recessed frame, above the words
+    // (hidden when the memory has none). The frame sits on the row host at
+    // unit scale; the image is a nested child scaled to its own size, so the
+    // plate isn't multiplied by the photo's scale.
+    this.memCardPhotoRow = this.flexChild(col, {w: PHOTO_FRAME_CM, h: PHOTO_FRAME_CM}, (c) => {
+      const frame = c.createComponent(BackPlate.getTypeName()) as BackPlate
+      frame.style = "dark"
+      frame.size = new vec2(PHOTO_FRAME_CM, PHOTO_FRAME_CM)   // BEFORE init
+      const photo = this.obj(c, "Photo", new vec3(0, 0, PHOTO_Z_LIFT))
+      const img = photo.createComponent("Component.Image") as Image
       const mat = imageMaterial.clone()
       mat.mainPass.baseTex = LOGO_TEX   // placeholder until setCardPhoto
       mat.mainPass.depthTest = true
@@ -950,7 +966,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       mat.mainPass.baseColor = new vec4(1, 1, 1, 1)
       img.clearMaterials()
       img.addMaterial(mat)
-      c.getTransform().setLocalScale(new vec3(11.5, 11.5, 1))
+      photo.getTransform().setLocalScale(new vec3(PHOTO_CM, PHOTO_CM, 1))
       this.memCardPhotoMat = mat
     })
 
@@ -993,19 +1009,33 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       const row = this.flexRow(c, 21, 3, {
         justify: FlexJustify.Center, align: FlexAlign.Center,
       })
-      this.rowButton(row, "Conjure imagery", 13.5, COL_TEAL, () => this._onCardConjure.invoke())
+      // Retitled per memory by setConjureKind — "Conjure imagery" is only the
+      // pre-routing placeholder.
+      this.memCardConjureLabel = this.rowButton(row, "Conjure imagery", 14, COL_TEAL,
+        () => this._onCardConjure.invoke())
     })
 
-    // Conjure row (revealed by Enhance): override the router's imagery kind.
+    // Override stack (revealed by Enhance): the caption is what tells you the
+    // buttons below are a DIFFERENT choice, not a repeat of the primary.
     // Built ENABLED so its buttons initialize during the FAR_POS park window
     // (G3); applyInitialVisibility hides it, and toggles only happen post-init.
-    this.memCardEnhanceRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
-      const row = this.flexRow(c, 21, 3, {
-        justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
+    this.memCardEnhanceRow = this.flexChild(col, {w: 21, h: 5}, (c) => {
+      const stack = this.flexColumn(c, 21, 5, {
+        gap: 0.4, justify: FlexJustify.Center, align: FlexAlign.Center,
       })
-      this.rowButton(row, "3D", 5, COL_LVIOLET, () => this._onCardEnhanceMesh.invoke())
-      this.rowButton(row, "Image", 6.5, COL_LVIOLET, () => this._onCardEnhanceImage.invoke())
-      this.rowButton(row, "Back", 5, COL_MUTED, () => this.setMemCardMode("main"))
+      this.flexChild(stack, {w: 21, h: 1.4}, (t) => {
+        this.textIn(t, "or pick a different kind", "Caption", {
+          font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
+        })
+      })
+      this.flexChild(stack, {w: 21, h: 2.8}, (r) => {
+        const row = this.flexRow(r, 21, 2.8, {
+          justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
+        })
+        this.rowButton(row, "3D", 5, COL_LVIOLET, () => this._onCardEnhanceMesh.invoke())
+        this.rowButton(row, "Image", 6.5, COL_LVIOLET, () => this._onCardEnhanceImage.invoke())
+        this.rowButton(row, "Back", 5, COL_MUTED, () => this.setMemCardMode("main"))
+      })
     })
 
     // Remove row (only when the memory already has an enhancement).
@@ -1055,11 +1085,27 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = mode === "readonly"
     if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = mode === "prompt"
     if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = mode === "grade"
+    // Rescan so the hidden rows give up their slots — `refreshChildren` skips
+    // disabled children, which collapses the card down onto what's visible.
+    // Pre-init the layout hasn't discovered anything yet, so skip (the initial
+    // pass runs after applyInitialVisibility anyway).
+    if (this.initDone && this.memCardFlex !== null) this.memCardFlex.refreshChildren()
   }
 
-  /** Button inside an existing flex row (memory card actions). */
+  /** Name the router's pick on the primary conjure button, so "Conjure" and
+   *  the 3D / Image overrides aren't three unlabelled ways to do one thing. */
+  setConjureKind(kind: "mesh" | "image" | null): void {
+    if (this.memCardConjureLabel === null) return
+    this.memCardConjureLabel.text = kind === "mesh" ? "Conjure 3D object"
+      : kind === "image" ? "Conjure image"
+      : "Conjure imagery"
+  }
+
+  /** Button inside an existing flex row (memory card actions).
+   *  Returns the label Text so callers can retitle it later. */
   private rowButton(row: SceneObject, label: string, width: number, labelColor: vec4,
-      onClick: () => void): void {
+      onClick: () => void): Text | null {
+    let labelText: Text | null = null
     this.flexChild(row, {w: width, h: 2.8}, (host) => {
       const btn = host.createComponent(Button.getTypeName()) as Button
       btn.size = new vec3(width, 2.8, 1)   // BEFORE init
@@ -1069,13 +1115,14 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         justify: FlexJustify.Center, align: FlexAlign.Center,
       })
       this.flexChild(brow, {w: width - 2, h: 2.2}, (c) => {
-        this.textIn(c, label, "Button", {
+        labelText = this.textIn(c, label, "Button", {
           font: FONT_MEDIUM, nativeWeight: 500, color: labelColor,
         })
       })
 
       btn.onTriggerUp.add(onClick)
     })
+    return labelText
   }
 
   private buildSigilLabel(): void {

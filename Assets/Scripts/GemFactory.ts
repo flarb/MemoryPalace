@@ -38,7 +38,13 @@ const IDLE_BOB_CM = 2.2;          // × gem scale
 const IDLE_BOB_HZ = 0.25;         // 4 s period
 const IDLE_SPIN_S = 24;           // seconds per revolution
 const ORBIT_RADIUS_CM = 3.5;
-const SHAKE_AMP_CM = 0.9;
+// "shake" is a periodic SHUDDER, not a constant buzz. A continuous ~6 Hz
+// tremor reads as a rendering glitch rather than as urgency — and applied to
+// the wrapper it dragged the collider, the rings and the label anchor along
+// with it. It now rides the visual child only, in short decaying bursts.
+const SHAKE_AMP_CM = 0.8;
+const SHAKE_PERIOD_S = 2.4;    // one shudder per this many seconds
+const SHAKE_BURST_S = 0.55;    // how long each shudder lasts
 
 // VFX budget (DESIGN risk note: "a palace of 30 memories must never become a
 // wind-chime shop"). One shared additive puff family, distance-gated + capped.
@@ -932,28 +938,35 @@ export class GemFactory {
         visual.getTransform().setLocalRotation(quat.angleAxis(t * spinRate, vec3.up()));
       }
 
-      // Orbit / scale ride the visual child; bob + shake ride the wrapper so
-      // the collider (and every ring/glint parented to it) follows along.
-      if (!isImage) {
-        visual.getTransform().setLocalPosition(orbitR > 0
-          ? new vec3(Math.cos(t * Math.PI * 2 * 0.5) * orbitR, 0, Math.sin(t * Math.PI * 2 * 0.5) * orbitR)
-          : vec3.zero());
+      // Orbit, shake and scale all ride the VISUAL child. Only the bob moves
+      // the wrapper — the collider should follow the gem's travel, but it must
+      // not inherit a shudder (nor should the gaze/conjure/next-locus rings,
+      // which are wrapper children and are meant to read as calm).
+      let ox = 0, oy = 0, oz = 0;
+      if (orbitR > 0 && !isImage) {
+        ox = Math.cos(t * Math.PI * 2 * 0.5) * orbitR;
+        oz = Math.sin(t * Math.PI * 2 * 0.5) * orbitR;
       }
+      if (shake > 0) {
+        // One decaying ~7 Hz burst per SHAKE_PERIOD_S, then stillness.
+        const cycle = t % SHAKE_PERIOD_S;
+        if (cycle < SHAKE_BURST_S) {
+          const fade = 1 - cycle / SHAKE_BURST_S;
+          const amp = shake * fade * fade;
+          ox += Math.sin(cycle * 44) * amp;
+          oy += Math.sin(cycle * 51) * amp * 0.5;
+          oz += Math.sin(cycle * 38) * amp;
+        }
+      }
+      visual.getTransform().setLocalPosition(new vec3(ox, oy, oz));
       if (scaleMul !== 1) {
         visual.getTransform().setLocalScale(new vec3(
           g.visualBase.x * scaleMul, g.visualBase.y * scaleMul, g.visualBase.z * scaleMul));
       }
 
       const bob = Math.sin(t * Math.PI * 2 * bobHz) * bobAmp;
-      let sx = 0, sz = 0, sy = 0;
-      if (shake > 0) {
-        // Three incommensurable frequencies = jitter that never visibly loops.
-        sx = Math.sin(t * 37.1) * shake;
-        sy = Math.sin(t * 43.7) * shake * 0.6;
-        sz = Math.sin(t * 31.3) * shake;
-      }
       g.wrapper.getTransform().setWorldPosition(
-        new vec3(g.base.x + sx, g.base.y + bob + sy, g.base.z + sz));
+        new vec3(g.base.x, g.base.y + bob, g.base.z));
       // The light pool breathes counter to the bob: gem closer → pool fuller.
       // (Arriving gems overwrite this later in update() — last write wins.)
       if (g.glow !== null && !isNull(g.glow)) {

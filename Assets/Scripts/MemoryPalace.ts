@@ -818,6 +818,7 @@ export class MemoryPalace extends BaseScriptComponent {
       rec.enhance !== undefined, this.state === "EXPLORE");
     this.uiHud.setCardPhoto(this.cardPhotoFor(rec));   // both cards get the photo
     this.uiHud.setRoutePosition(this.routeIndexOf(memoryId), this.palace.memories.length);
+    this.uiHud.setConjureKind(this.conjureKindOf(rec));
     this.gems.playTrackAt(CARD_OPEN_SFX, base, 0.3);   // bloom-open arpeggio
     if (this.state === "EXPLORE") {
       // Select = full playback: the whisper's TTS cache at full voice (shared
@@ -883,8 +884,15 @@ export class MemoryPalace extends BaseScriptComponent {
       rec.enhance !== undefined, false, "enhance");
     this.uiHud.setCardPhoto(this.cardPhotoFor(rec));
     this.uiHud.setRoutePosition(this.routeIndexOf(rec.id), this.palace === null ? 0 : this.palace.memories.length);
+    this.uiHud.setConjureKind(this.conjureKindOf(rec));
     this.gems.playTrackAt(CARD_OPEN_SFX, fromStoredVec3(rec.position), 0.3);
     print("MemoryPalace: conjure offered for \"" + rec.transcript + "\" (" + rec.routeKind + ")");
+  }
+
+  /** The kind the one-tap Conjure button will produce, or null if unrouted. */
+  private conjureKindOf(rec: MemoryRecord): "mesh" | "image" | null {
+    if (rec.routeKind === "mesh" || rec.routeKind === "image") return rec.routeKind;
+    return null;
   }
 
   /** The router's label when it has one, else the raw transcript. */
