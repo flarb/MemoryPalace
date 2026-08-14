@@ -5,10 +5,15 @@
  * Layout in the GeneralDataStore:
  *   mp_index          JSON PalaceSummary[] — picker rows without loading bodies
  *   mp_palace_<id>    JSON Palace — full record incl. memories
+ *   mp_anchor_<id>    opaque serialized LocationAsset (PalaceAnchors) — the
+ *                     palace's spatial-anchor map handle, stored BESIDE the
+ *                     palace so an OS blob can never bloat the JSON body
  *
- * Spatial Anchors are deferred (package not installed; device-only to verify) —
- * v1 persists raw world poses per DESIGN.md "Location linking (v1 honesty)".
- * Positions are rounded to 0.1 cm to keep JSON small.
+ * Spatial anchoring is DUAL-WRITE (see PalaceAnchors.ts): raw world poses stay
+ * the source of truth per DESIGN.md "Location linking (v1 honesty)"; a palace
+ * that also carries `anchor` {key, pose} can rigidly re-align those poses when
+ * the device relocalizes the room. Pre-anchor saves (no `anchor`) load and
+ * behave exactly as before. Positions are rounded to 0.1 cm to keep JSON small.
  *
  * Every save/load prints counts + sizes + positions — that log line is the
  * persistence verification evidence (editor: the store survives lens resets
@@ -29,6 +34,32 @@ export interface StoredVec3 {
   x: number;
   y: number;
   z: number;
+}
+
+export interface StoredQuat {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
+
+/** A world pose (position + rotation), rounded for storage. */
+export interface StoredPose {
+  p: StoredVec3;
+  r: StoredQuat;
+}
+
+/**
+ * Per-palace spatial-anchor link (PalaceAnchors.ts). `key` names the sibling
+ * store entry holding the opaque serialized LocationAsset; `pose` is the
+ * anchor frame's world transform in the same frame the raw positions were
+ * last written in. ONE anchor per palace — a palace is bound to one physical
+ * room, so the whole set re-aligns rigidly or not at all (never half a
+ * palace; DESIGN.md "never error-wall").
+ */
+export interface AnchorLink {
+  key: string;
+  pose: StoredPose;
 }
 
 export interface EnhanceSpec {
@@ -74,6 +105,8 @@ export interface Palace {
   createdAt: number;
   updatedAt: number;
   memories: MemoryRecord[];
+  /** Spatial-anchor link; absent on pre-anchor saves (raw poses only). */
+  anchor?: AnchorLink;
 }
 
 export interface PalaceSummary {
@@ -93,6 +126,32 @@ export function toStoredVec3(v: vec3): StoredVec3 {
 
 export function fromStoredVec3(s: StoredVec3): vec3 {
   return new vec3(s.x, s.y, s.z);
+}
+
+/** Quats round to 4 dp — unit components need finer grain than the 0.1 cm
+ *  position rule (0.1 on a unit quat would be a multi-degree wobble). */
+export function toStoredQuat(q: quat): StoredQuat {
+  return {
+    x: Math.round(q.x * 10000) / 10000,
+    y: Math.round(q.y * 10000) / 10000,
+    z: Math.round(q.z * 10000) / 10000,
+    w: Math.round(q.w * 10000) / 10000,
+  };
+}
+
+export function fromStoredQuat(s: StoredQuat): quat {
+  const q = new quat(s.w, s.x, s.y, s.z);
+  q.normalize();   // undo rounding drift — LocatedAt math wants unit quats
+  return q;
+}
+
+const ANCHOR_KEY_PREFIX = "mp_anchor_";
+/** Anchor blobs are opaque OS handles of unknown size — refuse silly ones
+ *  rather than let one palace's map evict everything else in the store. */
+const ANCHOR_BLOB_CHARS = 32000;
+
+export function anchorBlobKey(palaceId: string): string {
+  return ANCHOR_KEY_PREFIX + palaceId;
 }
 
 /**
@@ -239,6 +298,29 @@ export class PalaceStore {
     print("PalaceStore: saved \"" + palace.name + "\" — " + palace.memories.length +
       " memories, " + json.length + " chars; positions: " + fmtPositions(palace.memories));
     return true;
+  }
+
+  // ── Spatial-anchor blobs (dual-write sidecar; never gates palace loads) ────
+
+  /** Persist a palace's opaque serialized anchor location. Size-guarded. */
+  saveAnchorBlob(palaceId: string, serialized: string): boolean {
+    if (serialized.length === 0 || serialized.length > ANCHOR_BLOB_CHARS) {
+      print("PalaceStore: anchor blob refused for " + palaceId + " (" +
+        serialized.length + " chars; budget " + ANCHOR_BLOB_CHARS + ") — palace stays raw-pose");
+      return false;
+    }
+    this.store.putString(anchorBlobKey(palaceId), serialized);
+    print("PalaceStore: anchor blob saved for " + palaceId + " (" +
+      serialized.length + " chars)");
+    return true;
+  }
+
+  /** The palace's serialized anchor location, or null when it has none. */
+  loadAnchorBlob(palaceId: string): string | null {
+    const key = anchorBlobKey(palaceId);
+    if (!this.store.has(key)) return null;
+    const s = this.store.getString(key);
+    return s.length > 0 ? s : null;
   }
 
   // ── Internals ──────────────────────────────────────────────────────────────

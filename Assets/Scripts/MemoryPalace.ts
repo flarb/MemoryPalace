@@ -21,8 +21,12 @@
  *             full playback. No sigil swirl, no edit affordances — the Done
  *             chip (the existing modal-summon affordance) walks back to MODAL.
  *
- * Persistence: PalaceStore (global.persistentStorageSystem). Spatial Anchors
- * deferred — raw world poses are the v1 (DESIGN.md "Location linking").
+ * Persistence: PalaceStore (global.persistentStorageSystem) — raw world poses
+ * stay the source of truth, DUAL-WRITTEN with a per-palace spatial anchor
+ * (PalaceAnchors): edit sessions map the room, Done checkpoints an anchor,
+ * and opening a palace rigidly re-aligns the whole set when the device
+ * relocalizes within the window. Editor + unmapped rooms: the raw-pose
+ * fallback carries everything (anchoring disarms in preview).
  *
  * All 3D content assembles here at runtime (script-driven scene assembly);
  * every visible string lives in MemoryPalaceUI.
@@ -35,10 +39,11 @@ import { ExploreController } from "./ExploreController";
 import { TrainController } from "./TrainController";
 import { AsrController } from "./AsrController";
 import {
-  PalaceStore, Palace, MemoryRecord,
+  PalaceStore, Palace, MemoryRecord, AnchorLink,
   toStoredVec3, fromStoredVec3, freshMemoryId, MAX_MEMORIES_PER_PALACE,
   routeOrder, normalizeRoute, moveInRoute,
 } from "./PalaceStore";
+import { PalaceAnchors, AnchorFix } from "./PalaceAnchors";
 import { EnhanceService, EnhanceKind, buildEnhancePrompt, averageTextureColor } from "./EnhanceService";
 import { routeMemory, MemoryRoute, coerceAnim, coerceVfx } from "./MemoryRouter";
 import { SnapshotService, Snapshot } from "./SnapshotService";
@@ -107,6 +112,9 @@ export class MemoryPalace extends BaseScriptComponent {
   private gems!: GemFactory;
   private asr = new AsrController();
   private store!: PalaceStore;
+  private anchors!: PalaceAnchors;
+  /** Palace whose anchor fix ran THIS session — Done can skip re-anchoring. */
+  private anchorFixedPalaceId: string | null = null;
   private enhancer = new EnhanceService();
   private enhanceMeshMat!: Material;
   private explore!: ExploreController;
@@ -154,6 +162,7 @@ export class MemoryPalace extends BaseScriptComponent {
   onAwake() {
     this.buildScene();
     this.store = new PalaceStore();
+    this.anchors = new PalaceAnchors(this.getSceneObject());
     this.sigil.setActive(false);   // cluster is session-only (MODAL at boot)
 
     this.createEvent("UpdateEvent").bind(() => this.onUpdate());
@@ -316,6 +325,7 @@ export class MemoryPalace extends BaseScriptComponent {
       return;
     }
     this.palace = loaded;
+    this.beginAnchorRestore(loaded);
     if (intent === "edit") this.enterEditSession(loaded);
     else if (intent === "explore") this.enterExplore(loaded);
     else this.enterTrain(loaded);
@@ -336,6 +346,9 @@ export class MemoryPalace extends BaseScriptComponent {
   }
 
   private enterSession(restored: boolean): void {
+    // Map the room while the user walks and captures — Done checkpoints the
+    // map into this palace's anchor (device-only; disarmed in editor).
+    this.anchors.beginMapping();
     this.uiHud.hideModal();
     this.conjuringIds = {};   // stale in-flight gates die with their session
     this.pendingRouteChipId = null;
@@ -361,18 +374,123 @@ export class MemoryPalace extends BaseScriptComponent {
 
     const p = this.palace;
     this.palace = null;
+    this.anchors.onSessionEnd();
     this.uiHud.showModal();
     if (p !== null) {
       if (p.memories.length === 0 && !this.store.has(p.id)) {
         print("MemoryPalace: empty unsaved palace discarded (" + p.id + ")");
         this.uiHud.showToast("Empty palace discarded");
+        this.anchors.stopMapping();
       } else {
         this.store.save(p);
+        this.maybeAnchorPalace(p);
         this.uiHud.showToast("Palace saved — " + p.memories.length +
           (p.memories.length === 1 ? " memory" : " memories"));
       }
     }
     this.setState("MODAL");
+  }
+
+  // ── Spatial anchors (per-palace rigid re-alignment; PalaceAnchors) ─────────
+
+  /**
+   * Kick relocalization for an anchored palace. Gems spawn from raw poses
+   * IMMEDIATELY (never block); if the room localizes within the window,
+   * applyAnchorFix re-aligns data + gems in place. Pre-anchor saves (no
+   * `anchor` field) skip all of this — exactly the old load path.
+   */
+  private beginAnchorRestore(loaded: Palace): void {
+    this.anchorFixedPalaceId = null;
+    if (loaded.anchor === undefined) return;
+    const blob = this.store.loadAnchorBlob(loaded.id);
+    if (blob === null) {
+      print("MemoryPalace: anchor blob missing for " + loaded.id + " — raw poses stand");
+      return;
+    }
+    const id = loaded.id;
+    this.anchors.beginRestore(blob, loaded.anchor.pose,
+      (fix: AnchorFix) => this.applyAnchorFix(id, fix));
+  }
+
+  /**
+   * The room localized: rigidly re-express every stored pose in this
+   * session's frame, persist (positions + refreshed anchor pose move
+   * together, so the stored frame stays self-consistent for next time), and
+   * respawn the gems in place. Mid-wizard (AIMING/LISTENING) the fix is
+   * dropped — yanking the world out from under a capture would be worse than
+   * the drift it corrects.
+   */
+  private applyAnchorFix(palaceId: string, fix: AnchorFix): void {
+    if (this.palace === null || this.palace.id !== palaceId) return;
+    if (this.state !== "SESSION" && this.state !== "EXPLORE" && this.state !== "TRAIN") {
+      print("MemoryPalace: anchor fix arrived mid-capture — raw poses stand");
+      return;
+    }
+    this.anchorFixedPalaceId = palaceId;
+    this.closeMemoryCard();
+    this.uiHud.hideGazeLabel();
+    this.hideSnapHint();
+    for (const rec of this.palace.memories) {
+      rec.position = toStoredVec3(fix.movePoint(fromStoredVec3(rec.position)));
+      if (rec.surfaceNormal !== undefined) {
+        rec.surfaceNormal = toStoredVec3(
+          fix.moveDirection(fromStoredVec3(rec.surfaceNormal).normalize()));
+      }
+    }
+    if (this.palace.anchor !== undefined) {
+      this.palace.anchor = { key: this.palace.anchor.key, pose: fix.newPose };
+    }
+    this.store.save(this.palace);
+
+    // Respawn in place: same records, same ids — in-flight conjures land on
+    // the new gems; hatched visuals regenerate exactly as a palace load does.
+    this.gems.despawnAll();
+    for (const rec of this.palace.memories) {
+      this.spawnMemoryGem(rec);
+      if (this.state === "TRAIN") {
+        this.gems.setResolved(rec.id, false);   // the quiz stays a quiz
+      } else if (rec.enhance !== undefined && !this.enhancer.isBusy(rec.id)) {
+        this.startEnhance(rec, true);
+      }
+    }
+    this.refreshRoute();
+    if (this.state === "TRAIN") this.markNextLocus();
+    this.flash("Palace aligned to this room",
+      this.camera.getForwardPosition(100, false));
+    print("MemoryPalace: anchor fix applied — " + this.palace.memories.length +
+      " memories re-aligned");
+  }
+
+  /**
+   * Done-time anchoring. Fresh anchor when the palace has none; RE-anchor
+   * when the stored one never localized this session (its frame no longer
+   * matches the raw poses the user just edited — the anchor always follows
+   * the last edit session's frame); skip when the fix ran (frames agree, so
+   * checkpointing again buys nothing).
+   */
+  private maybeAnchorPalace(p: Palace): void {
+    if (p.memories.length === 0) {
+      this.anchors.stopMapping();
+      return;
+    }
+    if (p.anchor !== undefined && this.anchorFixedPalaceId === p.id) {
+      this.anchors.stopMapping();
+      return;
+    }
+    const id = p.id;
+    this.anchors.requestAnchor(id,
+      (link, serialized) => this.onAnchorReady(id, link, serialized));
+  }
+
+  /** The Done-time anchor resolved — possibly after the session ended. */
+  private onAnchorReady(palaceId: string, link: AnchorLink, serialized: string): void {
+    const target = this.palace !== null && this.palace.id === palaceId
+      ? this.palace : this.store.load(palaceId);
+    if (target === null) return;   // discarded before the anchor resolved
+    if (!this.store.saveAnchorBlob(palaceId, serialized)) return;
+    target.anchor = link;
+    this.store.save(target);
+    print("MemoryPalace: \"" + target.name + "\" anchored to this room");
   }
 
   // ── Explore mode (view-only walk of the active palace) ─────────────────────
@@ -400,6 +518,7 @@ export class MemoryPalace extends BaseScriptComponent {
   /** Done chip during EXPLORE: nothing to save — just walk back to the modal. */
   private exitExplore(): void {
     if (this.state !== "EXPLORE") return;
+    this.anchors.onSessionEnd();
     this.explore.end();
     this.closeMemoryCard();
     this.gems.despawnAll();
@@ -533,6 +652,7 @@ export class MemoryPalace extends BaseScriptComponent {
   /** Done chip during TRAIN: mastery already saved per grade — walk home. */
   private exitTrain(): void {
     if (this.state !== "TRAIN") return;
+    this.anchors.onSessionEnd();
     this.train.end();
     this.uiHud.hideMemoryCard();
     this.uiHud.hideGazeLabel();
@@ -1376,6 +1496,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.sigil.update(dt, camPos);
     this.gems.update(dt, camPos);
     this.asr.update(dt);
+    this.anchors.update(dt);
 
     // Explore soundscape: LOD + whisper + twinkles ride the same frame loop.
     if (this.state === "EXPLORE") {
