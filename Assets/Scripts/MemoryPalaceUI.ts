@@ -196,6 +196,12 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   get onCardEnhanceImage(): PublicApi<void> { return this._onCardEnhanceImage.publicApi() }
   private _onCardEnhanceRemove = new Event<void>()
   get onCardEnhanceRemove(): PublicApi<void> { return this._onCardEnhanceRemove.publicApi() }
+  /** One-tap conjure: the router already chose the kind and wrote the prompt. */
+  private _onCardConjure = new Event<void>()
+  get onCardConjure(): PublicApi<void> { return this._onCardConjure.publicApi() }
+  /** Journey reorder: −1 = earlier on the route, +1 = later. */
+  private _onRouteMove = new Event<number>()
+  get onRouteMove(): PublicApi<number> { return this._onRouteMove.publicApi() }
   private _onGazeSpeak = new Event<void>()
   get onGazeSpeak(): PublicApi<void> { return this._onGazeSpeak.publicApi() }
   private _onTrainReveal = new Event<void>()
@@ -214,6 +220,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private gazeLabelText: Text | null = null
   private memCardActionRow: SceneObject | null = null
   private memCardEnhanceRow: SceneObject | null = null
+  private memCardConjureRow: SceneObject | null = null
+  private memCardRouteRow: SceneObject | null = null
+  private memCardRouteText: Text | null = null
   private memCardRemoveRow: SceneObject | null = null
   private memCardReadOnlyRow: SceneObject | null = null
   private memCardPromptRow: SceneObject | null = null
@@ -439,9 +448,12 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Memory card next to a selected gem: transcript + Delete + Close.
    *  readOnly (Explore): view-only — no Delete/Enhance, just Close. */
   showMemoryCard(transcript: string, worldPos: vec3, worldRot: quat,
-      hasEnhance: boolean = false, readOnly: boolean = false): void {
+      hasEnhance: boolean = false, readOnly: boolean = false,
+      startMode: "main" | "enhance" = "main"): void {
     this.cardHasEnhance = hasEnhance
-    this.setMemCardMode(readOnly ? "readonly" : "main")   // reopening resets the row
+    // Reopening resets the row — except when the caller opens straight into
+    // the conjure chip (post-capture "Conjure imagery?").
+    this.setMemCardMode(readOnly ? "readonly" : startMode)
     if (this.memCardText) {
       const MAX = 140
       this.memCardText.text = transcript.length > MAX ? transcript.slice(0, MAX) + "…" : transcript
@@ -455,6 +467,13 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.applyVisibility()
   }
   hideMemoryCard(): void { this.wantMemCard = false; this.applyVisibility() }
+
+  /** Journey readout on the memory card: "Locus 2 of 7". */
+  setRoutePosition(index: number, total: number): void {
+    if (this.memCardRouteText === null) return
+    this.memCardRouteText.text = index > 0
+      ? "Locus " + index + " of " + total : "Off route"
+  }
 
   /** Photo above the transcript on the memory card; null hides the row. */
   setCardPhoto(tex: Texture | null): void {
@@ -525,6 +544,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.statusRoot.getTransform().setLocalPosition(this.realPos["status"])
     this.gazeLabelRoot.getTransform().setLocalPosition(this.realPos["gazelabel"])
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = false
+    if (this.memCardConjureRow !== null) this.memCardConjureRow.enabled = false
+    if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = false
     if (this.memCardRemoveRow !== null) this.memCardRemoveRow.enabled = false
     if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = false
     if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = false
@@ -951,7 +972,31 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       this.rowButton(row, "Close", 5.6, COL_TEXT, () => this._onCardClose.invoke())
     })
 
-    // Conjure row (revealed by Enhance): pick the imagery kind.
+    // Journey row (edit sessions): where this memory sits on the route, and
+    // the two taps that move it (DESIGN.md "Journeys": a named, ordered route).
+    this.memCardRouteRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
+      const row = this.flexRow(c, 21, 3, {
+        justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.7,
+      })
+      this.rowButton(row, "◀", 3.4, COL_LVIOLET, () => this._onRouteMove.invoke(-1))
+      this.flexChild(row, {w: 11, h: 2.8}, (t) => {
+        this.memCardRouteText = this.textIn(t, "Locus 1", "Caption", {
+          font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
+        })
+      })
+      this.rowButton(row, "▶", 3.4, COL_LVIOLET, () => this._onRouteMove.invoke(1))
+    })
+
+    // One-tap conjure — the router already picked the kind and wrote a mnemonic
+    // prompt at capture time, so this is the whole "Conjure imagery?" chip.
+    this.memCardConjureRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
+      const row = this.flexRow(c, 21, 3, {
+        justify: FlexJustify.Center, align: FlexAlign.Center,
+      })
+      this.rowButton(row, "Conjure imagery", 13.5, COL_TEAL, () => this._onCardConjure.invoke())
+    })
+
+    // Conjure row (revealed by Enhance): override the router's imagery kind.
     // Built ENABLED so its buttons initialize during the FAR_POS park window
     // (G3); applyInitialVisibility hides it, and toggles only happen post-init.
     this.memCardEnhanceRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
@@ -1001,6 +1046,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Swap the memory card between its action rows (edit / conjure / read-only / train). */
   private setMemCardMode(mode: "main" | "enhance" | "readonly" | "prompt" | "grade"): void {
     if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
+    if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = mode === "main"
+    if (this.memCardConjureRow !== null) this.memCardConjureRow.enabled = mode === "enhance"
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
     if (this.memCardRemoveRow !== null) {
       this.memCardRemoveRow.enabled = mode === "enhance" && this.cardHasEnhance

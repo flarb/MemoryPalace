@@ -2,7 +2,8 @@
  * TrainController — Train mode v1's quiz targeting (DESIGN.md "Train mode",
  * core tier: recall quiz + self-grading + mastery ladder).
  *
- * Journey v1 = the active palace's memories in capture order (no editing UI).
+ * The journey is the palace's memories in ROUTE order — the caller passes them
+ * pre-sorted (`routeOrder`), so reordering on the memory card changes the walk.
  * Loci hide as bare glows (GemFactory glint rendering, distance auto-resolve
  * OFF); the CURRENT target pings periodically from its direction (twinkle SFX
  * + sparkle — spatial audio as wayfinding, DESIGN.md sound map). Arriving
@@ -41,7 +42,7 @@ export class TrainController {
 
   constructor(private gems: GemFactory) {}
 
-  /** Start the route over the active palace's memories, capture order. */
+  /** Start the route. `memories` must already be in route order. */
   begin(memories: MemoryRecord[], onPrompt: (memoryId: string) => void): void {
     this.anchors = memories.map((m) => ({
       memoryId: m.id, transcript: m.transcript, pos: fromStoredVec3(m.position),
@@ -51,7 +52,7 @@ export class TrainController {
     this.training = true;
     this.onPrompt = onPrompt;
     this.nextPing = this.elapsed + 0.8;   // first ping fast — orient immediately
-    print("Train: begin — " + this.anchors.length + " loci in capture order");
+    print("Train: begin — " + this.anchors.length + " loci in route order");
   }
 
   end(): void {

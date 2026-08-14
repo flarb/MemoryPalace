@@ -37,8 +37,10 @@ import { AsrController } from "./AsrController";
 import {
   PalaceStore, Palace, MemoryRecord,
   toStoredVec3, fromStoredVec3, freshMemoryId, MAX_MEMORIES_PER_PALACE,
+  routeOrder, normalizeRoute, moveInRoute,
 } from "./PalaceStore";
 import { EnhanceService, EnhanceKind, buildEnhancePrompt, averageTextureColor } from "./EnhanceService";
+import { routeMemory, MemoryRoute, AnimRecipe, VfxRecipe } from "./MemoryRouter";
 import { SnapshotService, Snapshot } from "./SnapshotService";
 import { HandInputData } from "SpectaclesInteractionKit.lspkg/Providers/HandInputData/HandInputData";
 import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider";
@@ -155,6 +157,8 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onCardEnhanceMesh.add(() => this.onEnhanceSelected("mesh"));
       this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
       this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
+      this.uiHud.onCardConjure.add(() => this.onCardConjure());
+      this.uiHud.onRouteMove.add((delta) => this.onRouteMove(delta));
       this.uiHud.onGazeSpeak.add(() => this.speakGazedMemory());
       this.uiHud.onExplore.add(() => this.requestMode("explore"));
       this.uiHud.onTrain.add(() => this.requestMode("train"));
@@ -300,11 +304,13 @@ export class MemoryPalace extends BaseScriptComponent {
   }
 
   private enterEditSession(loaded: Palace): void {
+    normalizeRoute(loaded.memories);   // dense 0..n-1 (old saves had no order)
     for (const rec of loaded.memories) {
       this.spawnMemoryGem(rec);
       // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
       if (rec.enhance !== undefined) this.startEnhance(rec, true);
     }
+    this.refreshRoute();
     this.enterSession(true);
   }
 
@@ -349,11 +355,13 @@ export class MemoryPalace extends BaseScriptComponent {
   // ── Explore mode (view-only walk of the active palace) ─────────────────────
 
   private enterExplore(loaded: Palace): void {
+    normalizeRoute(loaded.memories);
     for (const rec of loaded.memories) {
       this.spawnMemoryGem(rec);
       // Conjured imagery regenerates lazily — gems hatch as the palace wakes.
       if (rec.enhance !== undefined) this.startEnhance(rec, true);
     }
+    this.refreshRoute();   // the journey is legible while you walk it
     this.uiHud.hideModal();
     this.sigil.setChipOnly(true);   // Done chip = the way home; no edit affordances
     this.sigil.setActive(true);
@@ -387,16 +395,21 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private enterTrain(loaded: Palace): void {
     this.trainRemembered = 0;
+    normalizeRoute(loaded.memories);
     for (const rec of loaded.memories) {
       // Quiz: every locus starts hidden as a bare glow (no enhance regen —
       // conjured visuals would be hidden anyway and RSG tokens are precious).
       this.spawnMemoryGem(rec);
       this.gems.setResolved(rec.id, false);
     }
+    // The ribbon and the next-locus ring are content-free by construction, so
+    // they guide the walk without leaking any answer.
+    this.refreshRoute();
     this.uiHud.hideModal();
     this.sigil.setChipOnly(true);   // Done chip = the way home; no edit affordances
     this.sigil.setActive(true);
-    this.train.begin(loaded.memories, (memoryId) => this.trainPromptFor(memoryId));
+    this.train.begin(routeOrder(loaded.memories), (memoryId) => this.trainPromptFor(memoryId));
+    this.markNextLocus();
     this.setState("TRAIN");
     this.flash("Training \"" + loaded.name + "\" — follow the ping",
       this.camera.getForwardPosition(100, false));
@@ -471,6 +484,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.uiHud.hideGazeLabel();
     this.hideSnapHint();
     if (this.train.advance()) {
+      this.markNextLocus();
       this.flash("Next locus — follow the ping",
         this.camera.getForwardPosition(80, false));
     } else {
@@ -485,6 +499,12 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.showToast(msg);
       print("MemoryPalace: " + msg);
     }
+  }
+
+  /** Ring the locus the route is pointing you at (cleared at the end). */
+  private markNextLocus(): void {
+    const cur = this.train.current();
+    this.gems.setNextLocus(cur !== null ? cur.memoryId : null);
   }
 
   /** Done chip during TRAIN: mastery already saved per grade — walk home. */
@@ -594,6 +614,7 @@ export class MemoryPalace extends BaseScriptComponent {
         transcript: transcript,
         position: toStoredVec3(gemPos),
         createdAt: Date.now(),
+        order: this.palace.memories.length,   // appended to the end of the route
       };
       if (surfaceNormal !== null) rec.surfaceNormal = toStoredVec3(surfaceNormal);
       if (this.pendingSnap !== null) {
@@ -605,6 +626,8 @@ export class MemoryPalace extends BaseScriptComponent {
       this.palace.memories.push(rec);
       this.spawnMemoryGem(rec, true);   // fresh placement = arrival juice + SFX
       this.store.save(this.palace);   // auto-save after every capture
+      this.refreshRoute();            // the ribbon grows with the journey
+      this.routeMemoryFor(rec);       // one LLM call → label + recipes + offer
       print("MemoryPalace: captured \"" + transcript + "\" (" +
         this.palace.memories.length + " memories in " + this.palace.name + ")");
       flashText = "Memory placed (" + this.palace.memories.length + ")";
@@ -719,6 +742,50 @@ export class MemoryPalace extends BaseScriptComponent {
     this.gems.spawn(pos, PLACED_GEM_SCALE, rec.id,
       (memoryId) => this.onGemSelected(memoryId),
       { surface: surface, arrive: arrive });
+    // The router's motion + particle recipes ride the memory (DESIGN.md:
+    // "Animation is mandatory, not decoration"). Absent = baseline idle.
+    if (rec.anim !== undefined || rec.vfx !== undefined) {
+      this.gems.setRecipes(rec.id,
+        rec.anim !== undefined ? (rec.anim as AnimRecipe) : null,
+        rec.vfx !== undefined ? (rec.vfx as VfxRecipe) : null);
+    }
+  }
+
+  // ── Journeys (DESIGN.md: ordered route, ribbon, next-locus glow) ───────────
+
+  /** Redraw the journey ribbon from the active palace's route order. */
+  private refreshRoute(): void {
+    if (this.palace === null) { this.gems.clearRoute(); return; }
+    const route = routeOrder(this.palace.memories);
+    this.gems.setRoute(route.map((m) => fromStoredVec3(m.position)));
+  }
+
+  /** Reorder the selected memory along the route (−1 earlier / +1 later). */
+  private onRouteMove(delta: number): void {
+    if (this.state !== "SESSION" || this.palace === null || this.selectedMemoryId === null) return;
+    const at = moveInRoute(this.palace.memories, this.selectedMemoryId, delta);
+    if (at < 0) {
+      this.flash(delta < 0 ? "Already first on the route" : "Already last on the route",
+        this.gems.basePosition(this.selectedMemoryId));
+      return;
+    }
+    this.store.save(this.palace);
+    this.refreshRoute();
+    this.uiHud.setRoutePosition(at + 1, this.palace.memories.length);
+    const p = this.gems.basePosition(this.selectedMemoryId);
+    this.flash("Locus " + (at + 1) + " of " + this.palace.memories.length,
+      p !== null ? new vec3(p.x, p.y + FLASH_GEM_LIFT, p.z) : null);
+    print("MemoryPalace: route move " + this.selectedMemoryId + " → position " + (at + 1));
+  }
+
+  /** Route index (1-based) of a memory, for the card's locus readout. */
+  private routeIndexOf(memoryId: string): number {
+    if (this.palace === null) return 0;
+    const route = routeOrder(this.palace.memories);
+    for (let i = 0; i < route.length; i++) {
+      if (route[i].id === memoryId) return i + 1;
+    }
+    return 0;
   }
 
   private onGemSelected(memoryId: string): void {
@@ -750,6 +817,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.uiHud.showMemoryCard(rec.transcript, pos, quat.lookAt(toCam, upRef),
       rec.enhance !== undefined, this.state === "EXPLORE");
     this.uiHud.setCardPhoto(this.cardPhotoFor(rec));   // both cards get the photo
+    this.uiHud.setRoutePosition(this.routeIndexOf(memoryId), this.palace.memories.length);
     this.gems.playTrackAt(CARD_OPEN_SFX, base, 0.3);   // bloom-open arpeggio
     if (this.state === "EXPLORE") {
       // Select = full playback: the whisper's TTS cache at full voice (shared
@@ -766,6 +834,89 @@ export class MemoryPalace extends BaseScriptComponent {
     print("MemoryPalace: selected memory \"" + rec.transcript + "\" (" + memoryId + ")");
   }
 
+  // ── The mnemonic router (DESIGN.md "Imagery router") ───────────────────────
+
+  /**
+   * One RSG LLM call per capture: the literal transcript becomes a punchy
+   * label, an imagery pick with a bizarre-vivid prompt, and the motion/VFX
+   * recipes that carry the encoding. The label and recipes apply immediately;
+   * the imagery is only an OFFER until the user taps Conjure (DESIGN.md capture
+   * Step 4 — "Conjure imagery?"). Routing never blocks and never error-walls:
+   * `routeMemory` resolves to a local fallback rather than rejecting.
+   */
+  private routeMemoryFor(rec: MemoryRecord): void {
+    const palaceAtRequest = this.palace;
+    routeMemory(rec.transcript).then((route: MemoryRoute) => {
+      // The session may have ended, or this memory been deleted, while the
+      // call was in flight — both are ordinary, neither is an error.
+      if (this.palace === null || this.palace !== palaceAtRequest) return;
+      let live = false;
+      for (const m of this.palace.memories) {
+        if (m.id === rec.id) { live = true; break; }
+      }
+      if (!live) return;
+
+      rec.label = route.label;
+      rec.anim = route.animRecipe;
+      rec.vfx = route.vfxRecipe;
+      if (route.kind !== "gem") {
+        rec.routeKind = route.kind;
+        rec.routePrompt = route.prompt;
+      }
+      this.gems.setRecipes(rec.id, route.animRecipe, route.vfxRecipe);
+      this.store.save(this.palace);
+
+      // The conjure chip: only when the user is idle in the session (no card
+      // open, nothing selected) and the router actually has imagery to offer.
+      if (this.state === "SESSION" && this.selectedMemoryId === null &&
+          rec.routeKind !== undefined) {
+        this.openConjureChip(rec);
+      }
+    });
+  }
+
+  /** Post-capture "Conjure imagery?" — the memory card opened straight to it. */
+  private openConjureChip(rec: MemoryRecord): void {
+    this.selectedMemoryId = rec.id;
+    const pose = this.memCardPose(fromStoredVec3(rec.position));
+    this.uiHud.showMemoryCard(rec.transcript, pose.pos, pose.rot,
+      rec.enhance !== undefined, false, "enhance");
+    this.uiHud.setCardPhoto(this.cardPhotoFor(rec));
+    this.uiHud.setRoutePosition(this.routeIndexOf(rec.id), this.palace === null ? 0 : this.palace.memories.length);
+    this.gems.playTrackAt(CARD_OPEN_SFX, fromStoredVec3(rec.position), 0.3);
+    print("MemoryPalace: conjure offered for \"" + rec.transcript + "\" (" + rec.routeKind + ")");
+  }
+
+  /** The router's label when it has one, else the raw transcript. */
+  private displayText(rec: MemoryRecord): string {
+    return rec.label !== undefined && rec.label.length > 0 ? rec.label : rec.transcript;
+  }
+
+  /** One-tap Conjure: accept the router's own pick — no typing, no menu. */
+  private onCardConjure(): void {
+    if (this.state !== "SESSION" || this.palace === null || this.selectedMemoryId === null) return;
+    const id = this.selectedMemoryId;
+    let rec: MemoryRecord | null = null;
+    for (const m of this.palace.memories) {
+      if (m.id === id) { rec = m; break; }
+    }
+    if (rec === null) return;
+    if (rec.routeKind === undefined || rec.routePrompt === undefined) {
+      // Routing hasn't landed (or failed) — fall back to the manual kinds.
+      this.flash("Still reading that memory — pick 3D or Image",
+        this.gems.basePosition(id));
+      return;
+    }
+    if (this.enhancer.isBusy(id)) {
+      this.flash("Already conjuring this memory", this.gems.basePosition(id));
+      return;
+    }
+    rec.enhance = { kind: rec.routeKind as EnhanceKind, prompt: rec.routePrompt };
+    this.store.save(this.palace);
+    this.closeMemoryCard();
+    this.startEnhance(rec, false);
+  }
+
   // ── Enhance (conjured imagery via Remote Service Gateway) ──────────────────
 
   private onEnhanceSelected(kind: EnhanceKind): void {
@@ -780,7 +931,11 @@ export class MemoryPalace extends BaseScriptComponent {
       if (m.id === id) { rec = m; break; }
     }
     if (rec === null) return;
-    rec.enhance = { kind: kind, prompt: buildEnhancePrompt(kind, rec.transcript) };
+    // Manual override still gets the router's mnemonic prompt when the kinds
+    // agree — the styled template is only the no-routing fallback.
+    const prompt = rec.routeKind === kind && rec.routePrompt !== undefined
+      ? rec.routePrompt : buildEnhancePrompt(kind, rec.transcript);
+    rec.enhance = { kind: kind, prompt: prompt };
     this.store.save(this.palace);   // the conjure request persists with the palace
     this.closeMemoryCard();
     this.startEnhance(rec, false);
@@ -864,7 +1019,9 @@ export class MemoryPalace extends BaseScriptComponent {
     }
     this.gems.vaporize(id);   // punch-out + vapor burst + SFX (delete effect)
     this.palace.memories = this.palace.memories.filter((m) => m.id !== id);
+    normalizeRoute(this.palace.memories);   // close the gap in the route
     this.store.save(this.palace);   // auto-save after every delete
+    this.refreshRoute();
     this.closeMemoryCard();
     print("MemoryPalace: deleted memory " + id + " (" +
       this.palace.memories.length + " remain)");
@@ -917,10 +1074,12 @@ export class MemoryPalace extends BaseScriptComponent {
       if (!this.gazeRevealed && this.gazeDwell >= GAZE_DWELL_S) {
         this.gazeRevealed = true;
         if (this.gazeAudio !== null) this.gazeAudio.stop(false);
+        // Glanceable read: the router's 2–4 word label when it has one (select
+        // the gem for the full transcript). Unrouted memories show their words.
         let transcript = "";
         if (this.palace !== null) {
           for (const m of this.palace.memories) {
-            if (m.id === bestId) { transcript = m.transcript; break; }
+            if (m.id === bestId) { transcript = this.displayText(m); break; }
           }
         }
         this.uiHud.setGazeLabelText(transcript);
