@@ -487,12 +487,18 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Photo above the transcript on the memory card; null hides the row. */
   setCardPhoto(tex: Texture | null): void {
     if (this.memCardPhotoRow === null) return
-    if (tex === null) {
-      if (this.initDone) this.memCardPhotoRow.enabled = false
-      return
+    const want = tex !== null
+    if (want && this.memCardPhotoMat !== null) {
+      this.memCardPhotoMat.mainPass.baseTex = tex as Texture
     }
-    if (this.memCardPhotoMat !== null) this.memCardPhotoMat.mainPass.baseTex = tex
-    if (this.initDone) this.memCardPhotoRow.enabled = true
+    if (!this.initDone) return
+    if (this.memCardPhotoRow.enabled !== want) {
+      this.memCardPhotoRow.enabled = want
+      // Same rule as setMemCardMode: a row toggled outside a layout rescan has
+      // no slot — the photo drew OVER the card, poking out the top, and the
+      // plate was sized as if it weren't there (user-reported).
+      if (this.memCardFlex !== null) this.memCardFlex.refreshChildren()
+    }
   }
 
   /** Train: "What lives here?" + Reveal, posed like the memory card. */
@@ -968,7 +974,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     xBtn.size = new vec3(CLOSE_X_CM, CLOSE_X_CM, 1)   // BEFORE init
     xBtn.onTriggerUp.add(() => this._onCardClose.invoke())
     const xFace = this.obj(this.memCardCloseX, "Face", new vec3(0, 0, BUTTON_LABEL_Z))
-    this.textIn(xFace, "✕", "Button", {
+    // Plain letter "X": the ✕ glyph (U+2715) isn't in Montserrat and rendered
+    // as an empty tofu box (same for ◀▶ on the route row — user-reported).
+    this.textIn(xFace, "X", "Button", {
       font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
     })
 
@@ -1019,13 +1027,13 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       const row = this.flexRow(c, 21, 3, {
         justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.7,
       })
-      this.rowButton(row, "◀", 3.4, COL_LVIOLET, () => this._onRouteMove.invoke(-1))
+      this.rowButton(row, "<", 3.4, COL_LVIOLET, () => this._onRouteMove.invoke(-1))
       this.flexChild(row, {w: 11, h: 2.8}, (t) => {
         this.memCardRouteText = this.textIn(t, "Locus 1", "Caption", {
           font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
         })
       })
-      this.rowButton(row, "▶", 3.4, COL_LVIOLET, () => this._onRouteMove.invoke(1))
+      this.rowButton(row, ">", 3.4, COL_LVIOLET, () => this._onRouteMove.invoke(1))
     })
 
     // One-tap conjure — the router already picked the kind and wrote a mnemonic
