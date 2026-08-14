@@ -118,6 +118,8 @@ export class MemoryPalace extends BaseScriptComponent {
   private snapTex: { [memoryId: string]: Texture } = {};
   private snapTinyTex: { [memoryId: string]: Texture } = {};
   private pendingSnap: Snapshot | null = null;
+  /** Set while the post-capture chip is open: X cancels THIS memory only. */
+  private freshCaptureId: string | null = null;
   private hintObj: SceneObject | null = null;
   private hintImage: Image | null = null;
 
@@ -160,6 +162,7 @@ export class MemoryPalace extends BaseScriptComponent {
       this.uiHud.onCardEnhanceImage.add(() => this.onEnhanceSelected("image"));
       this.uiHud.onCardEnhanceRemove.add(() => this.onRemoveEnhancement());
       this.uiHud.onCardConjure.add(() => this.onCardConjure());
+      this.uiHud.onCardOk.add(() => this.onCardOk());
       this.uiHud.onRouteMove.add((delta) => this.onRouteMove(delta));
       this.uiHud.onGazeSpeak.add(() => this.speakGazedMemory());
       this.uiHud.onExplore.add(() => this.requestMode("explore"));
@@ -881,6 +884,7 @@ export class MemoryPalace extends BaseScriptComponent {
   /** Post-capture "Conjure imagery?" — the memory card opened straight to it. */
   private openConjureChip(rec: MemoryRecord): void {
     this.selectedMemoryId = rec.id;
+    this.freshCaptureId = rec.id;   // X = cancel while THIS card stays open
     const pose = this.memCardPose(fromStoredVec3(rec.position));
     this.uiHud.showMemoryCard(rec.transcript, pose.pos, pose.rot,
       rec.enhance !== undefined, false, "enhance");
@@ -1038,7 +1042,12 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private onDeleteSelected(): void {
     if (this.state !== "SESSION" || this.palace === null || this.selectedMemoryId === null) return;
-    const id = this.selectedMemoryId;
+    this.deleteMemoryById(this.selectedMemoryId, "Memory deleted");
+  }
+
+  /** Shared destroy path: Delete button, and X-as-cancel on a fresh capture. */
+  private deleteMemoryById(id: string, flashText: string): void {
+    if (this.palace === null) return;
     let deletedPos: vec3 | null = null;
     for (const m of this.palace.memories) {
       if (m.id === id) { deletedPos = fromStoredVec3(m.position); break; }
@@ -1051,13 +1060,25 @@ export class MemoryPalace extends BaseScriptComponent {
     this.closeMemoryCard();
     print("MemoryPalace: deleted memory " + id + " (" +
       this.palace.memories.length + " remain)");
-    this.flash("Memory deleted", deletedPos !== null
+    this.flash(flashText, deletedPos !== null
       ? new vec3(deletedPos.x, deletedPos.y + 10, deletedPos.z)
       : this.camera.getForwardPosition(80, false));
   }
 
-  /** User-driven card close: reverse bloom (programmatic teardowns stay silent). */
+  /**
+   * Corner X. On the fresh-capture chip it's CANCEL — the just-placed memory
+   * is discarded (user call, reversing the earlier keep-on-X: with OK beside
+   * it, X reads as "didn't mean it"). On any other card it's plain close;
+   * X-deleting a week-old memory on a misclick would be unforgivable, and
+   * Delete exists for intent.
+   */
   private onCardCloseTapped(): void {
+    if (this.selectedMemoryId !== null &&
+        this.selectedMemoryId === this.freshCaptureId) {
+      this.freshCaptureId = null;
+      this.deleteMemoryById(this.selectedMemoryId, "Capture discarded");
+      return;
+    }
     if (this.selectedMemoryId !== null) {
       const p = this.gems.basePosition(this.selectedMemoryId);
       if (p !== null) this.gems.playTrackAt(CARD_CLOSE_SFX, p, 0.22);
@@ -1065,9 +1086,26 @@ export class MemoryPalace extends BaseScriptComponent {
     this.closeMemoryCard();
   }
 
+  /** OK on the conjure panel: fresh chip → keep the memory and close;
+   *  existing memory → back to the main panel. */
+  private onCardOk(): void {
+    if (this.selectedMemoryId !== null &&
+        this.selectedMemoryId === this.freshCaptureId) {
+      this.freshCaptureId = null;
+      const p = this.gems.basePosition(this.selectedMemoryId);
+      if (p !== null) this.gems.playTrackAt(CARD_CLOSE_SFX, p, 0.22);
+      this.closeMemoryCard();
+      return;
+    }
+    this.uiHud.showMemCardMain();
+  }
+
   private closeMemoryCard(): void {
     this.uiHud.hideMemoryCard();
     this.selectedMemoryId = null;
+    // Any close ends the "fresh capture" window — reopening the same gem
+    // later gets ordinary card semantics (X = close, not cancel).
+    this.freshCaptureId = null;
   }
 
   // ── Gestures & helpers ─────────────────────────────────────────────────────

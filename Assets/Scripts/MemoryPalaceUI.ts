@@ -208,6 +208,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Journey reorder: −1 = earlier on the route, +1 = later. */
   private _onRouteMove = new Event<number>()
   get onRouteMove(): PublicApi<number> { return this._onRouteMove.publicApi() }
+  /** OK on the conjure panel — accept and move on (owner decides what that means). */
+  private _onCardOk = new Event<void>()
+  get onCardOk(): PublicApi<void> { return this._onCardOk.publicApi() }
   private _onGazeSpeak = new Event<void>()
   get onGazeSpeak(): PublicApi<void> { return this._onGazeSpeak.publicApi() }
   private _onTrainReveal = new Event<void>()
@@ -1095,13 +1098,14 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       this.rowButton(row, "Remove enhancement", 15, COL_ROSE, () => this._onCardEnhanceRemove.invoke())
     })
 
-    // Back to the main panel. Its own full row at the bottom of the conjure
-    // panel — the old in-row "Back" read as a third imagery kind.
+    // OK — "accept and move on". On the fresh-capture chip this is the keep
+    // affordance (X beside it is cancel); on an existing memory it returns to
+    // the main panel. The owner (MemoryPalace) knows which card this is.
     this.memCardBackRow = this.flexChild(col, {w: 21, h: 2.8}, (c) => {
       const row = this.flexRow(c, 21, 2.8, {
         justify: FlexJustify.Center, align: FlexAlign.Center,
       })
-      this.rowButton(row, "Back", 8, COL_MUTED, () => this.setMemCardMode("main"))
+      this.rowButton(row, "OK", 8, COL_TEAL, () => this._onCardOk.invoke())
     })
 
     // (The read-only Explore row is gone: its only control was Close, and the
@@ -1152,6 +1156,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     // pass runs after applyInitialVisibility anyway).
     if (this.initDone && this.memCardFlex !== null) this.memCardFlex.refreshChildren()
   }
+
+  /** Flip an open card back to its main panel (OK on an existing memory). */
+  showMemCardMain(): void { this.setMemCardMode("main") }
 
   /** Name the router's pick on the primary conjure button, so "Conjure" and
    *  the 3D / Image overrides aren't three unlabelled ways to do one thing. */
