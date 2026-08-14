@@ -1,5 +1,49 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Thu night → Fri Aug 14 — Live-use feedback burst (shake, card chrome, conjure SFX)
+
+**Prompts (rapid-fire, mid-turn, from actually using the build):** "Yeah drop
+shake, it's terrible. Looks broken." · "the sound played when clicking conjure
+just sounds like a beep. It needs to be magical" · "instead of 'Back' looking
+like a third option at the beginning, how about an X button in the upper left
+hand corner? Also we should be able to delete memories when creating a new
+palace" · "or maybe the X button… cancels without placing the memory, and we
+need an OK button underneath the options alone to save it?"
+
+That last message forked the design (X-as-dismiss vs X-as-cancel-capture are
+different cards — the second defers Wednesday's auto-save), so it went to an
+explicit question rather than a guess. **User picked: X dismisses, memory
+stays**; Delete remains the one way to destroy a memory.
+
+**Increment (one commit, three fixes):**
+- **Shake removed from the vocabulary**, not retuned again. The earlier
+  retune (decaying burst, visual-child only) had already shipped and the user
+  still read it as broken — the correct response to "this motion reads as a
+  bug" is not a third tuning pass. AnimRecipe is five entries; urgency lives
+  in pulse/swell; stored recipes are now **coerced** against the live
+  vocabulary at spawn (`coerceAnim`: shake→pulse) instead of cast, so
+  yesterday's saves keep moving and the cast-vs-validate lesson is structural.
+- **Card chrome**: dismissal moved off the rows entirely — a corner ✕
+  (repositioned every layout pass, because the plate resizes per mode).
+  Enhance became a *toggle* that opens the conjure block beneath the action
+  row instead of replacing it. That replacement was also the real cause of
+  "can't delete while creating": Delete existed, but the post-capture chip
+  auto-opened enhance mode and ate the row. The Explore-only Close row is
+  deleted outright (the ✕ is universal), and the ✕ hides during Train
+  prompts — closing the quiz card mid-run would strand the route.
+- **conjure.wav**: the Conjure tap was playing the stock UIKit click. New
+  clip in the solfeggio family — the `glass`/`breath` voices are copied
+  *verbatim* from gen_sfx_solfeggio.js so the timbre is identical, per sound
+  rule 1 (one key, one family): rising breath sweep, 528→639→852 climb,
+  sparkle bloom at 1056/1278/1704, hall tail with ampWobble. Positional at
+  the gem, 0.55 vol.
+
+**Verification:** compile + clean boot after each of the three; the WAV
+verified on disk (3.95 s stereo) with the preflight lint. The feel calls —
+X placement, toggle behavior, whether the new sound reads as magical — are
+explicitly the user's eyes-and-ears check; agent-side visual verification
+stayed unreliable with the second MCP client attached to the same editor.
+
 ## Thu Aug 13 — Thursday's three: router, recipes, journeys
 
 **Prompt:** "ok let's resume, what do we have left to do?" → a what's-left
