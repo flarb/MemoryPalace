@@ -22,8 +22,16 @@
 import { OpenAI } from "RemoteServiceGateway.lspkg/HostedExternal/OpenAI";
 import { OpenAITypes } from "RemoteServiceGateway.lspkg/HostedExternal/OpenAITypes";
 
-/** Procedural transform recipes (GemFactory drives these on the gem wrapper). */
-export type AnimRecipe = "spin" | "bob" | "pulse" | "orbit" | "shake" | "swell";
+/**
+ * Procedural transform recipes (GemFactory drives these on the gem).
+ *
+ * DESIGN.md listed a sixth, "shake". It shipped and was cut the same day: any
+ * high-frequency tremor — even retuned to a decaying burst on the visual only
+ * — reads as a rendering glitch rather than as urgency, which is the opposite
+ * of what a mnemonic wants. Urgency is carried by `pulse` and `swell` instead.
+ * Legacy saves are remapped by `coerceAnim`.
+ */
+export type AnimRecipe = "spin" | "bob" | "pulse" | "orbit" | "swell";
 /** Particle recipes (GemFactory's shared additive puff family, restyled). */
 export type VfxRecipe = "sparkle" | "smoke" | "burst" | "rain" | "none";
 /** "gem" = don't conjure; the gem stays the marker. */
@@ -38,7 +46,7 @@ export interface MemoryRoute {
   routed: boolean;        // false = local fallback, not the LLM's opinion
 }
 
-const ANIMS: AnimRecipe[] = ["spin", "bob", "pulse", "orbit", "shake", "swell"];
+const ANIMS: AnimRecipe[] = ["spin", "bob", "pulse", "orbit", "swell"];
 const VFX: VfxRecipe[] = ["sparkle", "smoke", "burst", "rain", "none"];
 const KINDS: RouteKind[] = ["mesh", "image", "gem"];
 
@@ -56,9 +64,9 @@ const SYSTEM_PROMPT =
   "more memorable. Concrete and absurd beats literal and tasteful. One centered " +
   "subject. Example: \"buy milk\" -> \"a cartoon cow doing a handstand spraying a " +
   "fountain of milk\". Keep under 30 words.\n" +
-  "  animRecipe: one of spin, bob, pulse, orbit, shake, swell. Motion carries the " +
+  "  animRecipe: one of spin, bob, pulse, orbit, swell. Motion carries the " +
   "encoding — pick the one that dramatizes THIS memory. Abstract or urgent " +
-  "memories deserve aggressive motion (shake, pulse, swell).\n" +
+  "memories deserve the bigger motions (pulse, swell).\n" +
   "  vfxRecipe: one of sparkle, smoke, burst, rain, none. Use none sparingly.";
 
 /** Tolerant extraction: models sometimes wrap JSON in prose or ``` fences. */
@@ -81,6 +89,23 @@ function pick<T>(value: any, allowed: T[], fallback: T): T {
     if ((a as any as string) === v) return a;
   }
   return fallback;
+}
+
+/**
+ * Validate a stored `anim` string against the live vocabulary. Saves written
+ * before "shake" was cut still carry it; those memories inherit `pulse`, the
+ * nearest surviving urgency motion, rather than silently falling back to idle.
+ */
+export function coerceAnim(value: string | undefined): AnimRecipe | null {
+  if (value === undefined) return null;
+  if (value === "shake") return "pulse";   // retired recipe, remapped
+  return pick<AnimRecipe | null>(value, ANIMS as (AnimRecipe | null)[], null);
+}
+
+/** Validate a stored `vfx` string against the live vocabulary. */
+export function coerceVfx(value: string | undefined): VfxRecipe | null {
+  if (value === undefined) return null;
+  return pick<VfxRecipe | null>(value, VFX as (VfxRecipe | null)[], null);
 }
 
 /** First few words, Title Cased — a decent label with no network at all. */

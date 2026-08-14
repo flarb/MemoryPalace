@@ -150,6 +150,9 @@ const CARD_W = 24
 const PHOTO_CM = 11.5                 // the snapshot itself
 const PHOTO_FRAME_CM = PHOTO_CM + 1.4 // recessed plate behind it (0.7 cm reveal)
 const PHOTO_Z_LIFT = 0.4              // photo in front of its frame (z-fight guard)
+const CLOSE_X_CM = 3.2                // corner dismiss button
+const CLOSE_X_INSET = 2.2             // from the plate corner, in
+const CLOSE_X_Z = 1.2                 // in front of the plate AND the content
 const PICKER_ROWS = 6
 
 /** Shape of one saved-palace row the main script hands to showPalacePicker. */
@@ -228,8 +231,9 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardRouteText: Text | null = null
   private memCardConjureLabel: Text | null = null
   private memCardFlex: FlexLayout | null = null
+  private memCardCloseX: SceneObject | null = null
+  private memCardMode: "main" | "enhance" | "readonly" | "prompt" | "grade" = "main"
   private memCardRemoveRow: SceneObject | null = null
-  private memCardReadOnlyRow: SceneObject | null = null
   private memCardPromptRow: SceneObject | null = null
   private memCardGradeRow: SceneObject | null = null
   private memCardPhotoRow: SceneObject | null = null
@@ -552,7 +556,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.memCardConjureRow !== null) this.memCardConjureRow.enabled = false
     if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = false
     if (this.memCardRemoveRow !== null) this.memCardRemoveRow.enabled = false
-    if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = false
+    if (this.memCardCloseX !== null) this.memCardCloseX.enabled = false
     if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = false
     if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = false
     if (this.memCardPhotoRow !== null) this.memCardPhotoRow.enabled = false
@@ -947,6 +951,25 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.memCardFlex = flex
     flex.onLayoutComplete.add((r) => {
       plate.size = new vec2(r.containerWidth, r.containerHeight)
+      // The X rides the plate's upper-left corner, so it has to be re-placed
+      // every time the card resizes (which is every mode change).
+      if (this.memCardCloseX !== null) {
+        this.memCardCloseX.getTransform().setLocalPosition(new vec3(
+          -r.containerWidth / 2 + CLOSE_X_INSET,
+          r.containerHeight / 2 - CLOSE_X_INSET,
+          CLOSE_X_Z))
+      }
+    })
+
+    // Corner dismiss. Outside the flex column on purpose — it's chrome, not a
+    // row, and it must not push the content around or claim layout height.
+    this.memCardCloseX = this.obj(this.memCardRoot, "CardClose", FAR_POS)
+    const xBtn = this.memCardCloseX.createComponent(Button.getTypeName()) as Button
+    xBtn.size = new vec3(CLOSE_X_CM, CLOSE_X_CM, 1)   // BEFORE init
+    xBtn.onTriggerUp.add(() => this._onCardClose.invoke())
+    const xFace = this.obj(this.memCardCloseX, "Face", new vec3(0, 0, BUTTON_LABEL_Z))
+    this.textIn(xFace, "✕", "Button", {
+      font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
     })
 
     // Snapshot row: the memory's photo in a recessed frame, above the words
@@ -978,14 +1001,16 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
     })
 
-    // Action row: Enhance (conjure imagery) / Delete (soft rose) / Close.
+    // Action row: Enhance (toggles the conjure block) / Delete (soft rose).
+    // Dismissal lives on the corner X, not in this row — and Delete stays on
+    // screen while the conjure block is open, so it's always one tap away.
     this.memCardActionRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
       const row = this.flexRow(c, 21, 3, {
         justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
       })
-      this.rowButton(row, "Enhance", 6.8, COL_TEAL, () => this.setMemCardMode("enhance"))
-      this.rowButton(row, "Delete", 6.2, COL_ROSE, () => this._onCardDelete.invoke())
-      this.rowButton(row, "Close", 5.6, COL_TEXT, () => this._onCardClose.invoke())
+      this.rowButton(row, "Enhance", 7.4, COL_TEAL,
+        () => this.setMemCardMode(this.memCardMode === "enhance" ? "main" : "enhance"))
+      this.rowButton(row, "Delete", 7, COL_ROSE, () => this._onCardDelete.invoke())
     })
 
     // Journey row (edit sessions): where this memory sits on the route, and
@@ -1032,9 +1057,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         const row = this.flexRow(r, 21, 2.8, {
           justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
         })
-        this.rowButton(row, "3D", 5, COL_LVIOLET, () => this._onCardEnhanceMesh.invoke())
-        this.rowButton(row, "Image", 6.5, COL_LVIOLET, () => this._onCardEnhanceImage.invoke())
-        this.rowButton(row, "Back", 5, COL_MUTED, () => this.setMemCardMode("main"))
+        // No "Back" here — it read as a third imagery choice. Enhance toggles
+        // this block shut, and the corner X dismisses the card outright.
+        this.rowButton(row, "3D", 6, COL_LVIOLET, () => this._onCardEnhanceMesh.invoke())
+        this.rowButton(row, "Image", 7.5, COL_LVIOLET, () => this._onCardEnhanceImage.invoke())
       })
     })
 
@@ -1046,13 +1072,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       this.rowButton(row, "Remove enhancement", 15, COL_ROSE, () => this._onCardEnhanceRemove.invoke())
     })
 
-    // Read-only action row (Explore): view-only card — Close, nothing else.
-    this.memCardReadOnlyRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
-      const row = this.flexRow(c, 21, 3, {
-        justify: FlexJustify.Center, align: FlexAlign.Center,
-      })
-      this.rowButton(row, "Close", 6.2, COL_TEXT, () => this._onCardClose.invoke())
-    })
+    // (The read-only Explore row is gone: its only control was Close, and the
+    // corner X now does that in every mode.)
 
     // Train prompt row: the recall question's single affordance.
     this.memCardPromptRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
@@ -1075,16 +1096,25 @@ export class MemoryPalaceUI extends BaseScriptComponent {
 
   /** Swap the memory card between its action rows (edit / conjure / read-only / train). */
   private setMemCardMode(mode: "main" | "enhance" | "readonly" | "prompt" | "grade"): void {
-    if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
-    if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = mode === "main"
+    this.memCardMode = mode
+    // "enhance" is ADDITIVE, not a replacement: the conjure block opens
+    // beneath the ordinary actions so Delete never goes out of reach —
+    // it used to vanish the moment the post-capture chip auto-opened.
+    const editing = mode === "main" || mode === "enhance"
+    if (this.memCardActionRow !== null) this.memCardActionRow.enabled = editing
+    if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = editing
     if (this.memCardConjureRow !== null) this.memCardConjureRow.enabled = mode === "enhance"
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
     if (this.memCardRemoveRow !== null) {
       this.memCardRemoveRow.enabled = mode === "enhance" && this.cardHasEnhance
     }
-    if (this.memCardReadOnlyRow !== null) this.memCardReadOnlyRow.enabled = mode === "readonly"
     if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = mode === "prompt"
     if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = mode === "grade"
+    // Dismissal is available while browsing, but not mid-quiz — closing the
+    // card during a Train prompt would strand the run with no way back.
+    if (this.memCardCloseX !== null && this.initDone) {
+      this.memCardCloseX.enabled = editing || mode === "readonly"
+    }
     // Rescan so the hidden rows give up their slots — `refreshChildren` skips
     // disabled children, which collapses the card down onto what's visible.
     // Pre-init the layout hasn't discovered anything yet, so skip (the initial

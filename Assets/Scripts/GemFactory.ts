@@ -38,13 +38,8 @@ const IDLE_BOB_CM = 2.2;          // × gem scale
 const IDLE_BOB_HZ = 0.25;         // 4 s period
 const IDLE_SPIN_S = 24;           // seconds per revolution
 const ORBIT_RADIUS_CM = 3.5;
-// "shake" is a periodic SHUDDER, not a constant buzz. A continuous ~6 Hz
-// tremor reads as a rendering glitch rather than as urgency — and applied to
-// the wrapper it dragged the collider, the rings and the label anchor along
-// with it. It now rides the visual child only, in short decaying bursts.
-const SHAKE_AMP_CM = 0.8;
-const SHAKE_PERIOD_S = 2.4;    // one shudder per this many seconds
-const SHAKE_BURST_S = 0.55;    // how long each shudder lasts
+// ("shake" lived here. Cut — see AnimRecipe in MemoryRouter.ts. No amount of
+// retuning stopped a tremor from reading as a broken renderer.)
 
 // VFX budget (DESIGN risk note: "a palace of 30 memories must never become a
 // wind-chime shop"). One shared additive puff family, distance-gated + capped.
@@ -913,15 +908,13 @@ export class GemFactory {
       let spinRate = (Math.PI * 2) / IDLE_SPIN_S;
       let scaleMul = 1;
       let orbitR = 0;
-      let shake = 0;
       switch (g.anim) {
         case "spin":  spinRate = (Math.PI * 2) / 3; break;
         case "bob":   bobAmp *= 3.2; bobHz = 0.5; break;
         case "pulse": scaleMul = 1 + 0.18 * Math.sin(t * Math.PI * 2 * 1.6); break;
         case "orbit": orbitR = ORBIT_RADIUS_CM; break;
-        case "shake": shake = SHAKE_AMP_CM; break;
         case "swell": scaleMul = 1 + 0.30 * Math.sin(t * Math.PI * 2 * 0.35); break;
-        default: break;   // null → baseline idle
+        default: break;   // null / retired recipe → baseline idle
       }
 
       if (isImage) {
@@ -938,27 +931,15 @@ export class GemFactory {
         visual.getTransform().setLocalRotation(quat.angleAxis(t * spinRate, vec3.up()));
       }
 
-      // Orbit, shake and scale all ride the VISUAL child. Only the bob moves
-      // the wrapper — the collider should follow the gem's travel, but it must
-      // not inherit a shudder (nor should the gaze/conjure/next-locus rings,
-      // which are wrapper children and are meant to read as calm).
-      let ox = 0, oy = 0, oz = 0;
+      // Orbit and scale ride the VISUAL child; only the bob moves the wrapper,
+      // so the collider follows the gem's travel while the gaze / conjure /
+      // next-locus rings parented to it stay calm.
+      let ox = 0, oz = 0;
       if (orbitR > 0 && !isImage) {
         ox = Math.cos(t * Math.PI * 2 * 0.5) * orbitR;
         oz = Math.sin(t * Math.PI * 2 * 0.5) * orbitR;
       }
-      if (shake > 0) {
-        // One decaying ~7 Hz burst per SHAKE_PERIOD_S, then stillness.
-        const cycle = t % SHAKE_PERIOD_S;
-        if (cycle < SHAKE_BURST_S) {
-          const fade = 1 - cycle / SHAKE_BURST_S;
-          const amp = shake * fade * fade;
-          ox += Math.sin(cycle * 44) * amp;
-          oy += Math.sin(cycle * 51) * amp * 0.5;
-          oz += Math.sin(cycle * 38) * amp;
-        }
-      }
-      visual.getTransform().setLocalPosition(new vec3(ox, oy, oz));
+      visual.getTransform().setLocalPosition(new vec3(ox, 0, oz));
       if (scaleMul !== 1) {
         visual.getTransform().setLocalScale(new vec3(
           g.visualBase.x * scaleMul, g.visualBase.y * scaleMul, g.visualBase.z * scaleMul));

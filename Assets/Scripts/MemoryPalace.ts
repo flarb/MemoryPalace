@@ -40,7 +40,7 @@ import {
   routeOrder, normalizeRoute, moveInRoute,
 } from "./PalaceStore";
 import { EnhanceService, EnhanceKind, buildEnhancePrompt, averageTextureColor } from "./EnhanceService";
-import { routeMemory, MemoryRoute, AnimRecipe, VfxRecipe } from "./MemoryRouter";
+import { routeMemory, MemoryRoute, coerceAnim, coerceVfx } from "./MemoryRouter";
 import { SnapshotService, Snapshot } from "./SnapshotService";
 import { HandInputData } from "SpectaclesInteractionKit.lspkg/Providers/HandInputData/HandInputData";
 import WorldCameraFinderProvider from "SpectaclesInteractionKit.lspkg/Providers/CameraProvider/WorldCameraFinderProvider";
@@ -58,6 +58,7 @@ const GRADE_REMEMBER_SFX = requireAsset("../GeneratedSFX/graderemember.wav") as 
 const GRADE_ALMOST_SFX = requireAsset("../GeneratedSFX/gradealmost.wav") as AudioTrackAsset;
 const GRADE_FORGOT_SFX = requireAsset("../GeneratedSFX/gradeforgot.wav") as AudioTrackAsset;
 const COMPLETE_SFX = requireAsset("../GeneratedSFX/complete.wav") as AudioTrackAsset;
+const CONJURE_SFX = requireAsset("../GeneratedSFX/conjure.wav") as AudioTrackAsset;
 
 // 2D snapshots: per-palace budget for persisted photo chars — beyond it,
 // photos stay in-session only (DESIGN risk note allows exactly that).
@@ -745,9 +746,9 @@ export class MemoryPalace extends BaseScriptComponent {
     // The router's motion + particle recipes ride the memory (DESIGN.md:
     // "Animation is mandatory, not decoration"). Absent = baseline idle.
     if (rec.anim !== undefined || rec.vfx !== undefined) {
-      this.gems.setRecipes(rec.id,
-        rec.anim !== undefined ? (rec.anim as AnimRecipe) : null,
-        rec.vfx !== undefined ? (rec.vfx as VfxRecipe) : null);
+      // Coerced, not cast: saves written before "shake" was retired still
+      // carry it, and those memories inherit pulse rather than going inert.
+      this.gems.setRecipes(rec.id, coerceAnim(rec.anim), coerceVfx(rec.vfx));
     }
   }
 
@@ -973,6 +974,10 @@ export class MemoryPalace extends BaseScriptComponent {
     };
     if (!quiet) {
       this.flash(rec.enhance.kind === "mesh" ? "Conjuring object…" : "Conjuring image…", flashAt());
+      // The forge lights: rising solfeggio shimmer at the gem (DESIGN's
+      // "conjure accepted" beat — the button's own click was just a beep).
+      const at = this.gems.basePosition(rec.id);
+      if (at !== null) this.gems.playTrackAt(CONJURE_SFX, at, 0.55);
     }
     print("MemoryPalace: conjuring " + rec.enhance.kind + " for \"" + rec.transcript + "\"");
     this.gems.setConjuring(rec.id, true);   // spinning halo while we wait
