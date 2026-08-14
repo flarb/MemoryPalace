@@ -906,17 +906,21 @@ export class GemFactory {
     for (const g of this.gems) {
       if (isNull(g.wrapper)) continue;
       const t = this.elapsed + g.phase;
-      const isImage = g.enhanced !== null && g.enhancedKind === "image" && !isNull(g.enhanced);
-      const visual = g.enhanced !== null && !isNull(g.enhanced) ? g.enhanced : g.visual;
+      const hasEnhanced = g.enhanced !== null && !isNull(g.enhanced);
+      const isImage = hasEnhanced && g.enhancedKind === "image";
+      const visual = hasEnhanced ? (g.enhanced as SceneObject) : g.visual;
 
       // ── Recipe → motion parameters. Baseline idle applies to EVERY gem
-      // (DESIGN: "at least idle bob + slow spin"); the recipe layers on top.
+      // (DESIGN: "at least idle bob + slow spin"); the recipe animates the
+      // CONJURED imagery only — a bare gem is the anchor, and a recipe like
+      // orbit made it circle its own conjure ring (user: "why is the gem
+      // moving in a circle??"). Until something hatches, gems sit still.
       let bobAmp = IDLE_BOB_CM * g.scale;
       let bobHz = IDLE_BOB_HZ;
       let spinRate = (Math.PI * 2) / IDLE_SPIN_S;
       let scaleMul = 1;
       let orbitR = 0;
-      switch (g.anim) {
+      switch (hasEnhanced ? g.anim : null) {
         case "spin":  spinRate = (Math.PI * 2) / 3; break;
         case "bob":   bobAmp *= 3.2; bobHz = 0.5; break;
         case "pulse": scaleMul = 1 + 0.18 * Math.sin(t * Math.PI * 2 * 0.4); break;   // 1.6 → 0.8 → 0.4 Hz (user, twice: slower)
