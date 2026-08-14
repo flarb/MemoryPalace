@@ -8,12 +8,13 @@
  * content, so the router always names motion — `animRecipe` is never "none"
  * for a real memory.
  *
- * DESIGN's third kind, "bitmoji" (your avatar acts out the memory), is Friday
- * scope — the Bitmoji package and clip set aren't in the project yet. Until
- * then the router maps people/actions/events to "image" (Imagen can stage a
- * scene) and objects/concepts to "mesh" (Snap3D). The prompt below already
- * encodes DESIGN's noun-vs-verb split, so adding "bitmoji" later is a one-line
- * enum change plus a branch in the consumer.
+ * DESIGN's third kind, "bitmoji" (your avatar acts out the memory), is CUT
+ * (Fri Aug 14, user decision): the clip vocabulary was always going to be
+ * baked into the lens, the retargeting work was DESIGN's own flagged
+ * risk-day, and with no device this week the route would ship unverified.
+ * People/actions/events stay on "image" (Imagen stages the scene),
+ * objects/concepts on "mesh" (Snap3D) — DESIGN's noun-vs-verb split, minus
+ * the third kind. Rationale in DESIGN.md ("Bitmoji route — CUT") + PROMPTLOG.
  *
  * NEVER blocks and NEVER error-walls (DESIGN routing rule): any failure —
  * offline, expired RSG token, malformed JSON, unknown enum — degrades to

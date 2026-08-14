@@ -101,22 +101,31 @@ When the user conjures, a single LLM call (Remote Service Gateway → Gemini/Ope
 
 ```
 { label,                       // 2–4 word punchy title
-  kind: "mesh" | "bitmoji" | "gem",
-  meshPrompt?,                 // bizarre vivid imagery prompt for Snap3D
-  bitmojiAnim?,                // clip id from our bundled set
+  kind: "mesh" | "image" | "gem",   // "bitmoji" cut — see below
+  meshPrompt?,                 // bizarre vivid imagery prompt for Snap3D / Imagen
   animRecipe,                  // spin | bob | pulse | orbit | shake | swell | none
   vfxRecipe }                  // sparkle | smoke | burst | rain | none
 ```
 
 **Routing rule the prompt encodes:**
 - Objects / concepts / things (nouns) → **mesh**: Snap3D generates from `meshPrompt` ("buy milk" → "cartoon cow doing a handstand spraying a milk fountain").
-- People / actions / events (verbs, social) → **bitmoji**: *your own avatar* acts out the memory ("call mom" → your Bitmoji miming a phone call on the kitchen counter). Near-instant download vs Snap3D's long generation.
+- People / actions / events (verbs, social) → **image**: Imagen stages the scene ("call mom" → a luminous staged phone-call tableau). *(Was the Bitmoji route — cut, below.)*
 - Offline / generation failure → **gem** stays (never block, never error-wall).
+
+> **Bitmoji route — CUT (Fri Aug 14).** The third kind (*your own avatar acts
+> out the memory*) is out of scope for submission. Three reasons, in order:
+> animations can't be fetched at runtime, so the vocabulary was always going to
+> be ~8 clips baked into the lens; that clip retargeting was this doc's own
+> flagged risk-day; and with no device available this week, the entire route —
+> the avatar download included — would ship unverified. The image route already
+> covers the people/actions space (shipping since Thursday), so the
+> noun-vs-verb split survives intact — only the third kind is gone. Decision +
+> discussion in `PROMPTLOG.md`.
 
 **Animation is mandatory, not decoration.** Verified: Snap3D returns **static GLB** — and mnemonic research says static imagery underperforms for abstract content (formulas, events). So motion is ours:
 - 6–8 procedural transform recipes (tween-driven: spin, bob, pulse, orbit, shake, swell) + 3–4 VFX prefabs from the Asset Library (sparkle, smoke, burst, rain). The LLM tags every memory with `animRecipe` + `vfxRecipe`.
 - Every conjured object gets at least idle bob + slow spin; abstract concepts get aggressive motion + VFX (the motion carries the encoding).
-- Bitmoji: verified pattern — import Mixamo-compatible FBX/GLB clips, play via Animation Player ("Adapt to Mixamo" toggle; Animation State Manager for blending). We bundle ~8 clips (phone-call, wave, point, dance, facepalm, lift, run-in-place, shrug) as the LLM's fixed vocabulary.
+- ~~Bitmoji: import Mixamo-compatible FBX/GLB clips via Animation Player ("Adapt to Mixamo"); ~8 bundled clips as the LLM's fixed vocabulary.~~ *(Route cut — see above.)*
 
 ## Sound design (the arcana palette)
 
@@ -164,8 +173,8 @@ MemoryAnchor {
   transcript, label
   audioRef                 // in-session buffer (MVP); Snap Cloud ref (stretch)
   snapRef                  // 2D snapshot — required, captured at frame step
-  mediaKind                // gem | mesh | bitmoji
-  meshRef?, bitmojiAnim?
+  mediaKind                // gem | mesh | image (bitmoji cut)
+  meshRef?
   animRecipe, vfxRecipe
   journeyId?, order?       // route membership ("spatial inbox" if null)
   mastery                  // 0 Learn · 1 Practice · 2 Recall · 3 Mastered
@@ -206,7 +215,7 @@ MemoryAnchor {
 | Audio record/playback | AudioComponent + mic (Voice profile); positional playback |
 | Mnemonic router | Remote Service Gateway → Gemini/OpenAI (JSON out) |
 | Text → 3D | RSG → Snap3D (static GLB, long latency — always async) |
-| Avatar memories | Bitmoji 3D package (LS 5.15+ / OS 5.63+) + Animation Player + bundled Mixamo-style clips |
+| ~~Avatar memories~~ *(cut)* | ~~Bitmoji 3D package + Animation Player + bundled Mixamo-style clips~~ — people/actions ship as Imagen images |
 | Object motion | Tween recipes + Asset Library VFX prefabs |
 | Hand sigil | VFX Graph swirl + SIK `ObjectTracking3D` hand-keypoint attachment + hand occluder |
 | Blob storage (stretch) | Snap Cloud (Supabase) storage |
@@ -217,7 +226,7 @@ MemoryAnchor {
 
 **Core (must ship, Tue–Thu):** start modal + palm trigger; full capture wizard (frame-snap → speak → optional pin) with gem; anchor + metadata persistence; Explore select → card with photo/text/audio (in-session audio OK); one journey with recall quiz + self-grading + mastery ladder.
 
-**Wow (should ship, Thu–Sat):** imagery router + Snap3D hatch + prop/animation recipes; Bitmoji route; spatial-audio whisper; blurred-snapshot hint tier; placement/hatch juice.
+**Wow (should ship, Thu–Sat):** imagery router + Snap3D hatch + prop/animation recipes; ~~Bitmoji route~~ *(cut Fri)*; spatial-audio whisper; blurred-snapshot hint tier; placement/hatch juice.
 
 **Stretch:** Snap Cloud blobs; decay shader + spaced repetition; outdoor GPS mode; palm mini-map; multiple palaces; voice trigger; LLM auto-grading.
 
@@ -228,7 +237,7 @@ MemoryAnchor {
 | Tue | Scene bootstrap (camera, SIK, UIKit); git init + first commit; start modal + palm button; wizard v0: frame-draw → ASR card → gem drop (free-float). |
 | Wed | **Palace sessions + persistence:** session state machine (Create/Edit → sigil-controlled editing → Done saves → modal); sigil cluster v1 (swirl + Done chip, editor park restored); gem select → memory card + Delete; palace save/load (persistentStorage metadata + Spatial Anchors); modal Create/Edit + picker. Snapshot capture if time allows. *(Surface-pin shipped Tue night.)* |
 | Thu | Journeys + recall quiz + mastery ladder. RSG wiring + imagery router (LLM JSON). **Core feature freeze.** |
-| Fri | Snap3D async hatch + anim/VFX recipes; Bitmoji route + bundled clips. |
+| Fri | Snap3D async hatch + anim/VFX recipes; ~~Bitmoji route + bundled clips~~ *(cut — Friday shipped spatial anchors instead)*. |
 | Sat | Spatial-audio whisper, blurred hint, SFX/particles, lens icon; on-device passes; decay shader if cheap. |
 | Sun | Demo video, README, CLAD prompt log cleanup, submit. |
 
@@ -237,7 +246,7 @@ MemoryAnchor {
 ## Risks
 
 - **Snap3D latency/failure** → gem-first design; hatch is a bonus, never a gate.
-- **Bitmoji clip retargeting** → known gotchas (blend mode Default, parent scale) per docs; test one clip end-to-end early Friday before bundling eight.
+- **Bitmoji clip retargeting** *(moot — route cut)* → known gotchas (blend mode Default, parent scale) per docs; test one clip end-to-end early Friday before bundling eight.
 - **Permissions**: camera + mic + internet (RSG) triggers the sensitive-data permission flow — test the prompt path on device Saturday, and keep the capture wizard functional in preview with simulated inputs.
 - **Audio/photo blob persistence** → MVP persists transcript + pose + params; audio in-session; Snap Cloud is stretch.
 - **ASR in noisy env** → self-grading avoids ASR-dependent scoring; typing fallback in preview; lens audio ducks during recording.
@@ -245,4 +254,4 @@ MemoryAnchor {
 
 ## Demo script (submission video)
 
-Cold open: Simonides banquet story (10s). "Your brain is great at places, terrible at lists." Frame a bookshelf, speak "dentist Tuesday" — gem drops, then cracks open into a molar wearing a wristwatch, spinning. Speak "call mom" at the kitchen counter — your own Bitmoji hatches out miming a phone call. Walk the route once. Train mode: everything hidden, deliver all six from bare glows. Tag: *"Organize your mind in the world it already knows."*
+Cold open: Simonides banquet story (10s). "Your brain is great at places, terrible at lists." Frame a bookshelf, speak "dentist Tuesday" — gem drops, then cracks open into a molar wearing a wristwatch, spinning. Speak "call mom" at the kitchen counter — the gem cracks into a luminous staged scene of the call (people/actions route to Imagen). Walk the route once. Train mode: everything hidden, deliver all six from bare glows. Tag: *"Organize your mind in the world it already knows."*
