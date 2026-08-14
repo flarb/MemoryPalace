@@ -697,7 +697,7 @@ export class GemFactory {
       const ac = ring.createComponent("Component.AudioComponent") as AudioComponent;
       ac.audioTrack = FORGE_SFX;
       ac.playbackMode = Audio.PlaybackMode.LowPower;   // ambient loop (specs-audio)
-      ac.volume = 0.07;   // was 0.22 — user: too loud for a 90 s wait; 1/3
+      ac.volume = 0.045;   // 0.22 → 0.07 → 0.045 (user, twice: quieter)
       ac.play(-1);
       this.conjureRings.push({ memoryId: memoryId, obj: ring });
       return;
@@ -919,7 +919,7 @@ export class GemFactory {
       switch (g.anim) {
         case "spin":  spinRate = (Math.PI * 2) / 3; break;
         case "bob":   bobAmp *= 3.2; bobHz = 0.5; break;
-        case "pulse": scaleMul = 1 + 0.18 * Math.sin(t * Math.PI * 2 * 0.8); break;   // was 1.6 Hz — frantic on a 14 cm object (user call)
+        case "pulse": scaleMul = 1 + 0.18 * Math.sin(t * Math.PI * 2 * 0.4); break;   // 1.6 → 0.8 → 0.4 Hz (user, twice: slower)
         case "orbit": orbitR = ORBIT_RADIUS_CM; break;
         case "swell": scaleMul = 1 + 0.30 * Math.sin(t * Math.PI * 2 * 0.35); break;
         default: break;   // null / retired recipe → baseline idle

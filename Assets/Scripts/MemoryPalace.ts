@@ -125,6 +125,10 @@ export class MemoryPalace extends BaseScriptComponent {
    *  regens don't gate; blocking capture for a minute after load would read
    *  as broken. */
   private conjuringIds: { [id: string]: boolean } = {};
+  /** Fresh capture whose routing is still in flight. Gates the swirl through
+   *  the capture→chip gap — without it the swirl reappeared for the ~2 s the
+   *  LLM took, then vanished when the chip opened (user: "timing issue"). */
+  private pendingRouteChipId: string | null = null;
   private hintObj: SceneObject | null = null;
   private hintImage: Image | null = null;
 
@@ -330,6 +334,7 @@ export class MemoryPalace extends BaseScriptComponent {
   private enterSession(restored: boolean): void {
     this.uiHud.hideModal();
     this.conjuringIds = {};   // stale in-flight gates die with their session
+    this.pendingRouteChipId = null;
     this.sigil.setChipOnly(false);   // full cluster — sessions are for editing
     this.sigil.setActive(true);
     this.setState("SESSION");
@@ -641,6 +646,7 @@ export class MemoryPalace extends BaseScriptComponent {
       this.spawnMemoryGem(rec, true);   // fresh placement = arrival juice + SFX
       this.store.save(this.palace);   // auto-save after every capture
       this.refreshRoute();            // the ribbon grows with the journey
+      this.pendingRouteChipId = rec.id;   // swirl stays hidden until the chip
       this.routeMemoryFor(rec);       // one LLM call → label + recipes + offer
       print("MemoryPalace: captured \"" + transcript + "\" (" +
         this.palace.memories.length + " memories in " + this.palace.name + ")");
@@ -655,6 +661,7 @@ export class MemoryPalace extends BaseScriptComponent {
     this.pendingSnap = null;
     this.sigil.setActive(true);
     this.setState("SESSION");
+    this.applyConjureGate();   // routing pending → the swirl stays down NOW
     this.flash(flashText, flashPos);
   }
 
@@ -863,6 +870,12 @@ export class MemoryPalace extends BaseScriptComponent {
   private routeMemoryFor(rec: MemoryRecord, openChip: boolean = true): void {
     const palaceAtRequest = this.palace;
     routeMemory(rec.transcript).then((route: MemoryRoute) => {
+      // Routing resolved (success or fallback): the swirl-gate for this
+      // capture ends here regardless of what happens below.
+      if (this.pendingRouteChipId === rec.id) {
+        this.pendingRouteChipId = null;
+        this.applyConjureGate();
+      }
       // The session may have ended, or this memory been deleted, while the
       // call was in flight — both are ordinary, neither is an error.
       if (this.palace === null || this.palace !== palaceAtRequest) return;
@@ -999,7 +1012,8 @@ export class MemoryPalace extends BaseScriptComponent {
     // post-capture chip included — user report: both interfaces visible at
     // once) OR a conjure still forging. Done stays available throughout.
     const busy = Object.keys(this.conjuringIds).length > 0 ||
-      this.selectedMemoryId !== null;
+      this.selectedMemoryId !== null ||
+      this.pendingRouteChipId !== null;
     this.sigil.setChipOnly(busy);   // swirl + "New Memory" label hide; Done stays
   }
 

@@ -151,6 +151,10 @@ const PHOTO_CM = 11.5                 // the snapshot itself
 const PHOTO_FRAME_CM = PHOTO_CM + 1.4 // recessed plate behind it (0.7 cm reveal)
 const PHOTO_Z_LIFT = 0.4              // photo in front of its frame (z-fight guard)
 const CLOSE_X_CM = 3.2                // corner dismiss button
+// Memory-card type runs 15% larger than the base scale (user: hard to read).
+// Implemented as a viewing-distance bump — the type system already scales
+// linearly with distance, so 110 cm × 1.15 ≈ 126.
+const MEMCARD_TEXT_DIST = 126
 const CLOSE_X_INSET = 2.2             // from the plate corner, in
 const CLOSE_X_Z = 1.2                 // in front of the plate AND the content
 const PICKER_ROWS = 6
@@ -996,6 +1000,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     // as an empty tofu box (same for ◀▶ on the route row — user-reported).
     this.textIn(xFace, "X", "Button", {
       font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
+      distanceCm: MEMCARD_TEXT_DIST,
     })
 
     // Snapshot row: the memory's photo in a recessed frame, above the words
@@ -1026,7 +1031,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     this.flexChild(col, {w: 21, h: 5.4}, (c) => {
       this.memCardText = this.textIn(c, "", "Body", {
         font: FONT_MEDIUM, nativeWeight: 500, color: COL_TEXT,
-        wrap: {w: 21, h: 5.4},
+        wrap: {w: 21, h: 5.4}, distanceCm: MEMCARD_TEXT_DIST,
       })
     })
 
@@ -1051,6 +1056,7 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       this.flexChild(row, {w: 11, h: 2.8}, (t) => {
         this.memCardRouteText = this.textIn(t, "Locus 1", "Caption", {
           font: FONT_MEDIUM, nativeWeight: 500, color: COL_MUTED,
+          distanceCm: MEMCARD_TEXT_DIST,
         })
       })
       this.rowButton(row, ">", 3.4, COL_LVIOLET, () => this._onRouteMove.invoke(1))
@@ -1188,8 +1194,10 @@ export class MemoryPalaceUI extends BaseScriptComponent {
         justify: FlexJustify.Center, align: FlexAlign.Center,
       })
       this.flexChild(brow, {w: width - 2, h: 2.2}, (c) => {
+        // rowButton is memory-card-only, so the +15% card bump applies here.
         labelText = this.textIn(c, label, "Button", {
           font: FONT_MEDIUM, nativeWeight: 500, color: labelColor,
+          distanceCm: MEMCARD_TEXT_DIST,
         })
       })
 
