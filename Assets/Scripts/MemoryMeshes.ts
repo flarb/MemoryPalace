@@ -128,6 +128,92 @@ export function buildDiscMesh(radius: number, colorCenter: RGB, segments: number
   return buildMesh(verts, indices);
 }
 
+/**
+ * Dashed ribbon along a polyline through the palace — the journey path
+ * (DESIGN.md "Journeys": ribbon connects loci). Each dash is TWO perpendicular
+ * quads so the path reads from any viewing angle without billboarding, and the
+ * color runs colorA → colorB along the whole route so direction is legible at
+ * a glance: violet where you started, teal where you're headed.
+ *
+ * Points are consumed in the mesh's LOCAL space — host the object at the origin
+ * with identity rotation and pass world positions directly.
+ */
+export function buildPathDashMesh(
+  points: [number, number, number][],
+  width: number, dashLen: number, gapLen: number,
+  colorA: RGB, colorB: RGB
+): RenderMesh | null {
+  if (points.length < 2) return null;
+
+  const segLens: number[] = [];
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+    const l = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    segLens.push(l);
+    total += l;
+  }
+  if (total < 0.01) return null;
+
+  const verts: number[] = [];
+  const indices: number[] = [];
+  let vi = 0;
+  let walked = 0;
+  const step = dashLen + gapLen;
+  const half = width / 2;
+
+  const quad = (
+    p0: [number, number, number], p1: [number, number, number],
+    ax: [number, number, number], c: [number, number, number, number]
+  ): void => {
+    const o: [number, number, number] = [ax[0] * half, ax[1] * half, ax[2] * half];
+    pushVert(verts, [p0[0] - o[0], p0[1] - o[1], p0[2] - o[2]], ax, c);
+    pushVert(verts, [p0[0] + o[0], p0[1] + o[1], p0[2] + o[2]], ax, c);
+    pushVert(verts, [p1[0] - o[0], p1[1] - o[1], p1[2] - o[2]], ax, c);
+    pushVert(verts, [p1[0] + o[0], p1[1] + o[1], p1[2] + o[2]], ax, c);
+    indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
+    vi += 4;
+  };
+
+  for (let s = 0; s < segLens.length; s++) {
+    const len = segLens[s];
+    if (len < 0.01) { walked += len; continue; }
+    const a = points[s];
+    const b = points[s + 1];
+    const d: [number, number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len, (b[2] - a[2]) / len];
+
+    // Two axes perpendicular to the segment (world-up reference, with a
+    // fallback for near-vertical runs between stacked loci).
+    let u: [number, number, number] = [-d[2], 0, d[0]];   // d × up
+    let ul = Math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+    if (ul < 0.05) {
+      u = [d[1], -d[0], 0];   // any perpendicular; nonzero when d is vertical
+      ul = Math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+      if (ul < 1e-4) { walked += len; continue; }
+    }
+    u = [u[0] / ul, u[1] / ul, u[2] / ul];
+    const v: [number, number, number] = [
+      d[1] * u[2] - d[2] * u[1], d[2] * u[0] - d[0] * u[2], d[0] * u[1] - d[1] * u[0],
+    ];
+
+    for (let off = 0; off < len; off += step) {
+      const end = Math.min(off + dashLen, len);
+      if (end - off < dashLen * 0.35) break;   // no orphan stubs at a corner
+      const p0: [number, number, number] = [a[0] + d[0] * off, a[1] + d[1] * off, a[2] + d[2] * off];
+      const p1: [number, number, number] = [a[0] + d[0] * end, a[1] + d[1] * end, a[2] + d[2] * end];
+      const rgb = mix(colorA, colorB, Math.min(1, (walked + off) / total));
+      const c: [number, number, number, number] = [rgb[0], rgb[1], rgb[2], 1];
+      quad(p0, p1, u, c);
+      quad(p0, p1, v, c);
+    }
+    walked += len;
+  }
+  if (indices.length === 0) return null;
+  return buildMesh(verts, indices);
+}
+
 // Shared brand RGB constants for callers.
 export const RGB_LIGHT_VIOLET: RGB = [168 / 255, 139 / 255, 255 / 255]; // #a88bff
 export const RGB_VIOLET: RGB = [124 / 255, 108 / 255, 240 / 255];       // #7c6cf0

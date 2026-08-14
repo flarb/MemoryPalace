@@ -44,11 +44,26 @@ export interface MemoryRecord {
   createdAt: number;
   /** Recall mastery 0–3 (Train self-grades); absent on old saves = 0. */
   mastery?: number;
+  /** Router output (MemoryRouter): 2–4 word title shown instead of the raw
+   *  transcript on gaze labels and Train prompts. Absent = show transcript. */
+  label?: string;
+  /** Router output: procedural motion + particle recipes driving this gem.
+   *  Absent (old saves, routing offline) = the classic idle bob + slow spin. */
+  anim?: string;
+  vfx?: string;
+  /** Journey position along the route. Absent on old saves — `routeOrder()`
+   *  falls back to capture order, which is exactly what Train v1 assumed. */
+  order?: number;
   /** 192 px JPEG b64 crop of the framed region (persistence is a bonus,
    *  never a gate — absent = in-session-only or no photo). */
   snap?: string;
   /** 16 px twin of `snap` — bilinear upscale = the Train blur hint. */
   snapTiny?: string;
+  /** The router's imagery pick, held until the user taps Conjure. Distinct
+   *  from `enhance`: this is an OFFER (nothing generates), `enhance` is the
+   *  accepted REQUEST (regenerates on every palace load). */
+  routeKind?: string;
+  routePrompt?: string;
   /** Conjured imagery request — regenerated lazily on palace load. */
   enhance?: EnhanceSpec;
 }
@@ -78,6 +93,51 @@ export function toStoredVec3(v: vec3): StoredVec3 {
 
 export function fromStoredVec3(s: StoredVec3): vec3 {
   return new vec3(s.x, s.y, s.z);
+}
+
+/**
+ * The journey: memories in route order (DESIGN.md "Journeys" — an ordered
+ * route through the palace). `order` is authoritative when present; records
+ * without it keep their capture position, which is what Train v1 walked. The
+ * returned array is a new array over the SAME records — mutating a record
+ * through it still edits the palace.
+ */
+export function routeOrder(memories: MemoryRecord[]): MemoryRecord[] {
+  const decorated = memories.map((m, i) => ({
+    rec: m,
+    key: m.order !== undefined ? m.order : i,
+    i: i,
+  }));
+  decorated.sort((a, b) => (a.key !== b.key ? a.key - b.key : a.i - b.i));
+  return decorated.map((d) => d.rec);
+}
+
+/** Renumber `order` to a dense 0..n-1 along the current route order. */
+export function normalizeRoute(memories: MemoryRecord[]): void {
+  const route = routeOrder(memories);
+  for (let i = 0; i < route.length; i++) route[i].order = i;
+}
+
+/**
+ * Swap a memory with its route neighbour (delta -1 earlier / +1 later).
+ * Returns the memory's new 0-based route index, or -1 when it can't move.
+ */
+export function moveInRoute(memories: MemoryRecord[], memoryId: string, delta: number): number {
+  normalizeRoute(memories);
+  const route = routeOrder(memories);
+  let at = -1;
+  for (let i = 0; i < route.length; i++) {
+    if (route[i].id === memoryId) { at = i; break; }
+  }
+  if (at < 0) return -1;
+  const to = at + delta;
+  if (to < 0 || to >= route.length) return -1;
+  const a = route[at];
+  const b = route[to];
+  const tmp = a.order;
+  a.order = b.order;
+  b.order = tmp;
+  return to;
 }
 
 function fmtPositions(memories: MemoryRecord[]): string {
