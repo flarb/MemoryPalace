@@ -60,6 +60,7 @@ const GRADE_FORGOT_SFX = requireAsset("../GeneratedSFX/gradeforgot.wav") as Audi
 const COMPLETE_SFX = requireAsset("../GeneratedSFX/complete.wav") as AudioTrackAsset;
 const CONJURE_SFX = requireAsset("../GeneratedSFX/conjure.wav") as AudioTrackAsset;
 const HATCH_SFX = requireAsset("../GeneratedSFX/hatch.wav") as AudioTrackAsset;
+const SPLASH_SFX = requireAsset("../GeneratedSFX/splash.wav") as AudioTrackAsset;
 
 // 2D snapshots: per-palace budget for persisted photo chars — beyond it,
 // photos stay in-session only (DESIGN risk note allows exactly that).
@@ -76,6 +77,7 @@ const CARD_LERP = 8;                            // soft-follow responsiveness
 const MEMCARD_LIFT = 14;                        // cm above a selected gem
 const MEMCARD_PULL = 12;                        // cm from the gem toward the viewer
 const FLASH_S = 2.4;                            // transient status flash duration
+const FLASH_FAIL_S = 3.5;                       // failures linger longer (user call)
 
 const GAZE_COS = Math.cos((8 * Math.PI) / 180); // gaze cone half-angle 8°
 const GAZE_RANGE = 500;                         // cm — gaze reveal reach
@@ -988,6 +990,9 @@ export class MemoryPalace extends BaseScriptComponent {
     this.gems.removeEnhanced(id);
     this.closeMemoryCard();
     const p = this.gems.basePosition(id);
+    // Subtle splash (user call): the conjured thing dissolves back into the
+    // gem — a watery plip + the conjure climb unwound, not a milestone sound.
+    if (p !== null) this.gems.playTrackAt(SPLASH_SFX, p, 0.4);
     this.flash("Enhancement removed",
       p !== null ? new vec3(p.x, p.y + FLASH_GEM_LIFT, p.z) : null);
     print("MemoryPalace: enhancement removed for " + id);
@@ -1060,7 +1065,7 @@ export class MemoryPalace extends BaseScriptComponent {
         .catch((msg) => {
           this.gems.setConjuring(rec.id, false);
           this.conjureEnded(rec.id);
-          this.flash("Conjure failed — try again", flashAt());
+          this.flash("Generation failed — try again", flashAt(), FLASH_FAIL_S);
           print("MemoryPalace: image conjure failed — " + msg);
         });
     } else {
@@ -1088,7 +1093,7 @@ export class MemoryPalace extends BaseScriptComponent {
         (msg) => {
           this.gems.setConjuring(rec.id, false);
           this.conjureEnded(rec.id);
-          this.flash("Conjure failed — try again", flashAt());
+          this.flash("Generation failed — try again", flashAt(), FLASH_FAIL_S);
           print("MemoryPalace: mesh conjure failed — " + msg);
         });
     }
@@ -1298,12 +1303,13 @@ export class MemoryPalace extends BaseScriptComponent {
     }
   }
 
-  /** Transient status flash (billboarded caption) — session feedback juice. */
-  private flash(text: string, worldPos: vec3): void {
+  /** Transient status flash (billboarded caption) — session feedback juice.
+   *  Failures pass a longer hold (user: errors should linger 3–4 s). */
+  private flash(text: string, worldPos: vec3, seconds: number = FLASH_S): void {
     this.uiHud.setStatusText(text);
     this.uiHud.showStatus();
     this.uiHud.setStatusPosition(worldPos);
-    this.flashRemaining = FLASH_S;
+    this.flashRemaining = seconds;
   }
 
   private setState(s: WizardState): void {
