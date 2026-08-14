@@ -5,7 +5,7 @@
 <h3 align="center"><em>Organize your mind in the world it already knows.</em></h3>
 
 <p align="center">
-  An AR memory-palace trainer for <strong>SPECS</strong> —
+  An AR memory-palace trainer for <a href="https://www.specs.com/"><strong>SPECS</strong></a> —
   speak a memory, pin it to a real place, conjure bizarre imagery for it, then walk your
   palace and train until you don't need the Lens at all.
 </p>
