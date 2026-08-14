@@ -1,5 +1,75 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Fri Aug 14, ~midnight–2 AM — The polish gauntlet (12 commits of live use)
+
+**Session shape:** the user played the build continuously and fired findings
+as they hit them — often mid-turn, three or four per message. Every item
+below came from actual use, not review. This entry is the log of that
+gauntlet; each commit message carries its own detail.
+
+**The arc, in order:**
+- **Conjure panel confusion → structural fix.** "I still don't get the
+  difference between the 3D object enhancement and the Conjure" — correct
+  instinct; when the router picked mesh, "Conjure 3D object" and "3D" were
+  the same action twice. Panel is now primary + ONE opposite-kind button
+  ("Conjure image instead"), alt hidden when there's no alternative.
+  Unrouted memories conjure via the fallback template (the primary is never
+  dead), and edit-session load backfills routing for pre-router saves.
+- **Two panels, not one pile.** Main = Enhance / Delete / route row;
+  Enhance opens the conjure panel; corner X everywhere (glyph lesson:
+  Montserrat has no ✕/◀/▶ — tofu boxes shipped until the user asked "what
+  are those two squares?"); X = cancel on the fresh-capture chip only
+  (deliberate asymmetry — a misclick must never vaporize an old memory);
+  Back became OK. White photo frame; +15% card type via the distance-scaled
+  type system; photo row slot bug fixed (an enabled flex child with no slot
+  draws over the card — mirror of the earlier dead-band bug).
+- **Recipes tamed by eyes-on.** Shake: retuned once, then CUT outright
+  ("it's terrible. Looks broken") — coerceAnim remaps legacy saves to
+  pulse. Pulse: 1.6 → 0.8 → 0.4 Hz across two "slower" calls. And the
+  sailboat that orbited while bare: recipes now animate the CONJURED
+  visual only — the gem is the anchor and sits still until the hatch.
+- **The conjure got its soundtrack.** conjure.wav (rising accept shimmer),
+  forge.wav (waiting loop — v2 ships the steady-state last 4 s of a 6 s
+  render after the filter-warm-up seam clicked at every wrap, splice
+  corrected to blend into the samples PRECEDING the head; wrap step 0.0377
+  vs neighbor slopes 0.0363/0.0407 = C0+C1 continuous, proven numerically),
+  hatch.wav (crack + the family's full chord — the only clip that plays
+  all four solfeggio notes at once), splash.wav (remove enhancement: the
+  conjure climb unwound). Forge volume walked down twice: 0.22 → 0.07 →
+  0.045.
+- **Flow gating.** No new capture mid-creation: the sigil goes chip-only
+  while a card is open OR a conjure forges (Done always reachable); the
+  capture→chip gap gated too (the swirl flashed for the ~2 s LLM
+  round-trip — user called it "a timing issue," correctly).
+- **Snap3D is flaky, service-side.** "ALD verification failed" seconds
+  after an identical submit succeeded on the same token (board game ✓,
+  sailboat ✗). Token regen returns the account's EXISTING tokens — so this
+  wasn't expiry. Conjures now retry once silently (forge ring just keeps
+  going) before surfacing "Generation failed — try again" (3.5 s, up from
+  a missable 2.4).
+- **Additive-display honesty.** A near-black helicopter mesh — invisible
+  pixels on Specs. All three prompt paths now demand bright/luminous
+  subjects; image background stays dark on purpose (it vanishes, leaving
+  the subject floating). Which promptly contaminated LABELS ("a race car"
+  → "Luminous Race Car") — the router prompt now walls the fields: labels
+  name the memory AS SPOKEN, never the artwork.
+- **Debug tier grows up.** Routed prompt inspectable in edit mode; first
+  as extra gaze dwell (fired while just READING the label — same gesture,
+  different duration), now hand-ray hover over the label plate; box sits
+  ABOVE the label so it never covers the object.
+- **Explore ear pass.** The whisper spoke chipmunk at Explore start: the
+  only spatialAudio path in the app × 24 kHz TTS = editor resample bug
+  (the speaker button played the same cached track fine). Spatial is
+  device-only now — and on Saturday's listen list. The gaze dwell hum:
+  cut on one line of feedback ("kind of an annoying sound") — the ring
+  and motes carry the cue.
+
+**Meta-lesson for the log:** every one of these was invisible from the
+code and obvious in the first minute of real use. The build-verify loop
+(compile + boot + driven pinches) proves mechanisms; it cannot hear a
+chipmunk, feel a frantic pulse, or get confused by two buttons that do
+the same thing. Ship early to real eyes.
+
 ## Thu night → Fri Aug 14 — Live-use feedback burst (shake, card chrome, conjure SFX)
 
 **Prompts (rapid-fire, mid-turn, from actually using the build):** "Yeah drop
