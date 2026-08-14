@@ -1,5 +1,31 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Fri Aug 14 (after the restart) — Bitmoji: cut clean
+
+**Prompt:** "ok restarted, let's resume" → post-restart health check (MCP
+re-registered; compile + boot clean on the anchors build; the verification
+probe's store residue confirmed gone) → the one open scope decision from the
+what's-left review went to an explicit question. **User picked: cut it clean.**
+
+The premise check mattered more than the verdict: the user's instinct was
+"I don't think there's a way to dynamically download animations, so we'd
+have to bake all the animations in the app" — which is TRUE and was never
+the blocker, because DESIGN's plan was always a baked ~8-clip vocabulary
+(the dynamic part was the avatar itself). The cut is pure scope math: the
+route costs the package + eight Mixamo clips + the retargeting risk-day
+DESIGN itself flagged, buys exactly one demo beat, and — decisive this
+week — would ship entirely device-unverified. People/actions stay on the
+image route (Imagen stages the scene), shipping behavior since Thursday;
+the router's noun-vs-verb split survives minus its third kind.
+
+**The cut on paper (zero runtime code):** DESIGN.md gets a dated cut block
+in the Imagery-router section and strikethrough markers in the scope tiers,
+build plan, risk register, tech table, and data-model sketch; the demo
+script's "call mom" beat now hatches a luminous Imagen tableau instead of
+a Bitmoji. MemoryRouter.ts's header stops promising a bitmoji future.
+The runtime enum never contained "bitmoji" — Thursday's one-line-change
+promise is simply never called in. Compile + boot re-verified clean.
+
 ## Fri Aug 14 — Spatial anchors land (native API, no device) + hygiene pass
 
 **Prompt:** "Can you add the spatial anchor feature and do the hygiene pass?
