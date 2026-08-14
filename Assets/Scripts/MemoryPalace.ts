@@ -59,6 +59,7 @@ const GRADE_ALMOST_SFX = requireAsset("../GeneratedSFX/gradealmost.wav") as Audi
 const GRADE_FORGOT_SFX = requireAsset("../GeneratedSFX/gradeforgot.wav") as AudioTrackAsset;
 const COMPLETE_SFX = requireAsset("../GeneratedSFX/complete.wav") as AudioTrackAsset;
 const CONJURE_SFX = requireAsset("../GeneratedSFX/conjure.wav") as AudioTrackAsset;
+const HATCH_SFX = requireAsset("../GeneratedSFX/hatch.wav") as AudioTrackAsset;
 
 // 2D snapshots: per-palace budget for persisted photo chars — beyond it,
 // photos stay in-session only (DESIGN risk note allows exactly that).
@@ -965,6 +966,16 @@ export class MemoryPalace extends BaseScriptComponent {
     print("MemoryPalace: enhancement removed for " + id);
   }
 
+  /**
+   * The hatch chord at the gem (DESIGN: "crack + particle burst + harmonic
+   * bloom"). Quieter on palace-load regens: several gems waking at once
+   * overlap, and the same-key chords harmonize but shouldn't stack loud.
+   */
+  private playHatch(memoryId: string, quiet: boolean): void {
+    const p = this.gems.basePosition(memoryId);
+    if (p !== null) this.gems.playTrackAt(HATCH_SFX, p, quiet ? 0.35 : 0.6);
+  }
+
   /** Kick generation for a memory's stored enhance spec; visuals hatch async. */
   private startEnhance(rec: MemoryRecord, quiet: boolean): void {
     if (rec.enhance === undefined) return;
@@ -988,6 +999,7 @@ export class MemoryPalace extends BaseScriptComponent {
           this.gems.setConjuring(rec.id, false);
           if (this.gems.setEnhancedImage(rec.id, tex)) {
             this.gems.setGlowTint(rec.id, averageTextureColor(tex));
+            this.playHatch(rec.id, quiet);
             this.flash("✓ Image conjured", flashAt());
             print("MemoryPalace: image conjured for " + rec.id);
           }
@@ -1007,6 +1019,7 @@ export class MemoryPalace extends BaseScriptComponent {
         (baseMesh) => {
           this.gems.setConjuring(rec.id, false);
           if (this.gems.setEnhancedMesh(rec.id, baseMesh, this.enhanceMeshMat)) {
+            this.playHatch(rec.id, quiet);
             this.flash("✓ Object conjured (refining…)", flashAt());
             print("MemoryPalace: base mesh conjured for " + rec.id);
           }
