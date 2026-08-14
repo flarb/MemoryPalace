@@ -1,5 +1,58 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Fri Aug 14 (afternoon) — The agent films its own demo footage
+
+**Prompt:** "let's record a video now — because I want to submit now and then
+revise it later... Perhaps you can record video yourself and put it in a
+folder and then I can also have you edit it together later? Let's give it a
+shot."
+
+**Result: three raw clips in `DemoFootage/` (git-ignored), the full core loop
+on film, driven and shot entirely agentically.** ffmpeg gdigrab captured the
+LS preview panel (crop calibrated by eyeballing a test frame, 914×1842@30fps)
+while the lens was driven through MCP. The palace filmed: one memory, the
+canned editor transcript "buy milk for Thursday" — which the live router
+turned into *[Buy Milk Thursday] / mesh / pulse+sparkle / "a luminous cartoon
+cow wearing a top hat, juggling glowing milk bottles labeled 'Thursday'"* —
+and Snap3D delivered the cow in ~35 s, hatched on camera.
+
+- **Clip 01** — boot → New → sigil parks → swirl → reticle ("Click to
+  place") → tap → canned transcript streams → gem drops → Conjure accepted,
+  forge shimmer.
+- **Clip 02** — THE HATCH at t+8s (a second overlapping recorder started on
+  purpose when clip 01's safety cap got close — the hatch landed 3 s after
+  clip 01 capped; the overlap saved the money shot), Done → save → Explore:
+  pull-back to glint distance, step-walk approach, gem select → card + ✕ →
+  Done.
+- **Clip 03** — Train: the cow hides to a bare glow in the quiz ring ("What
+  lives here?"), reveal → transcript + grade row, Remembered → quiz complete
+  → modal.
+
+**Input-driving lessons (logged for the next session):**
+- The puppet hand (PreviewInteractTool) presses UIKit buttons fine — until an
+  InteractionPlane sits in the ray ("obstructed by InteractionPlaneColliderRoot");
+  coordinate-targeted pinches bypass the validator and usually land, but fail
+  SILENTLY on the follow-modal's buttons (success ≠ button fired — always
+  verify by state, not by tool response).
+- A "timed out" pinch can still have fired (Train did — the timeout error
+  arrived while the picker it had opened sat on screen). Check state before
+  retrying, exactly as the skill warns.
+- The reliable path for modal UI in editor is the MouseInteractor: injected
+  preview taps at panel-measured coordinates, TWO per press — Wednesday's
+  waypoint lesson holds for taps too (first tap moves the cursor = hover +
+  tooltip; second tap clicks).
+- The log tail is flooded by editor telemetry — lens prints routinely fall in
+  unread gaps between tails. State queries (QueryRuntimeSceneTool) are the
+  truth; tails are corroboration.
+
+**Honesty:** no audio in the raw clips (no loopback device — the solfeggio
+palette exists but isn't captured; the edit adds music/VO, or v2 re-records
+via a virtual cable). Clip 03 carries ~75 s of picker fumbling to cut. The
+footage is editor-preview footage by necessity — no device this week, so no
+on-device capture exists. Shot-by-shot timecodes + edit notes in
+`DemoFootage/SHOTLOG.md` (ignored with the footage; this entry is the
+in-repo record).
+
 ## Fri Aug 14 (after the restart) — Bitmoji: cut clean
 
 **Prompt:** "ok restarted, let's resume" → post-restart health check (MCP
