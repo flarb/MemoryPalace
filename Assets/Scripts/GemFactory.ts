@@ -12,8 +12,9 @@
  */
 import { Interactable } from "SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable";
 import { buildMemoryGemMesh } from "./MemoryGemMesh";
-import { buildDashedRingMesh, buildDiscMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
+import { buildDashedRingMesh, buildDiscMesh, buildPathDashMesh, RGB_LIGHT_VIOLET, RGB_TEAL, RGB_VIOLET } from "./MemoryMeshes";
 import { EnhanceKind } from "./EnhanceService";
+import { AnimRecipe, VfxRecipe } from "./MemoryRouter";
 
 const VAPORIZE_SFX = requireAsset("../GeneratedSFX/vaporize.wav") as AudioTrackAsset;
 const IMAGE_MAT = requireAsset("../Materials/ImageMaterial.mat") as Material;
@@ -29,6 +30,27 @@ const PLACE_PARTICLES = 12;
 
 const GLOW_RADIUS = 6;            // cm — light pool under a surface gem (~gem width +30%)
 const GLOW_LIFT = 0.35;           // cm off the surface (z-fight guard)
+
+// Motion recipes (DESIGN.md: "Animation is mandatory, not decoration" — Snap3D
+// returns static GLB, so the encoding motion is ours). Baseline idle bob + slow
+// spin applies to EVERY gem; the recipe layers on top of it.
+const IDLE_BOB_CM = 2.2;          // × gem scale
+const IDLE_BOB_HZ = 0.25;         // 4 s period
+const IDLE_SPIN_S = 24;           // seconds per revolution
+const ORBIT_RADIUS_CM = 3.5;
+const SHAKE_AMP_CM = 0.9;
+
+// VFX budget (DESIGN risk note: "a palace of 30 memories must never become a
+// wind-chime shop"). One shared additive puff family, distance-gated + capped.
+const VFX_RANGE_CM = 500;
+const VFX_PARTICLE_CAP = 140;     // global live-particle ceiling before emitters yield
+const VFX_BURST_PERIOD_S = 2.4;
+
+// Journey ribbon (DESIGN.md "Journeys": ribbon connects loci, next locus glows).
+const RIBBON_WIDTH = 0.9;         // cm
+const RIBBON_DASH = 6;            // cm
+const RIBBON_GAP = 5;             // cm
+const NEXT_RING_RADIUS = 11;      // cm — reads clearly outside the gem silhouette
 
 const VAPOR_PUNCH_S = 0.12;       // punch-out phase
 const VAPOR_SHRINK_S = 0.55;      // shrink-to-nothing phase
@@ -74,6 +96,13 @@ interface GemRecord {
   scale: number;
   resolved: boolean;                 // Explore LOD: false = anonymous glint
   glint: SceneObject | null;         // lazy soft-mote stand-in (Explore)
+  anim: AnimRecipe | null;           // router recipe; null = baseline idle only
+  vfx: VfxRecipe | null;
+  vfxAccum: number;                  // fractional emission carry
+  /** Rest scale of the ACTIVE visual — vec3.one for the gem, the fitted scale
+   *  for a conjured mesh, the aspect box for a conjured image. Scale recipes
+   *  multiply this so pulse/swell never eat the auto-fit. */
+  visualBase: vec3;
 }
 
 interface PendingFit {
@@ -98,6 +127,9 @@ export class GemFactory {
   private conjureRingMesh: RenderMesh | null = null;
   private gazeRing: ConjureRing | null = null;
   private gazeRingMesh: RenderMesh | null = null;
+  private ribbon: SceneObject | null = null;
+  private nextRing: ConjureRing | null = null;
+  private nextRingMesh: RenderMesh | null = null;
   private glintCoreMesh: RenderMesh | null = null;
   private glintHaloMesh: RenderMesh | null = null;
   private gazeMoteAccum = 0;
@@ -173,6 +205,10 @@ export class GemFactory {
       scale: gemScale,
       resolved: true,
       glint: null,
+      anim: null,
+      vfx: null,
+      vfxAccum: 0,
+      visualBase: vec3.one(),
     });
 
     // Fresh placements arrive with juice; restored palaces spawn quietly.
@@ -269,6 +305,7 @@ export class GemFactory {
       }
       g.enhanced = holder;
       g.enhancedKind = "mesh";
+      g.visualBase = vec3.one();   // replaced by the fit pass once the AABB is live
       this.applyResolvedVisibility(g);
       // Auto-fit needs live AABBs — keep the holder visible through the fit
       // window even when glinted; the fit pass re-applies visibility after.
@@ -299,9 +336,11 @@ export class GemFactory {
       img.clearMaterials();
       img.addMaterial(mat);
       const aspect = texture.getHeight() > 0 ? texture.getWidth() / texture.getHeight() : 1;
-      holder.getTransform().setLocalScale(new vec3(IMAGE_HEIGHT_CM * aspect, IMAGE_HEIGHT_CM, 1));
+      const imgScale = new vec3(IMAGE_HEIGHT_CM * aspect, IMAGE_HEIGHT_CM, 1);
+      holder.getTransform().setLocalScale(imgScale);
       g.enhanced = holder;
       g.enhancedKind = "image";
+      g.visualBase = imgScale;   // scale recipes multiply this, never replace it
       this.applyResolvedVisibility(g);
       this.spawnVaporBurst(g.wrapper.getTransform().getWorldPosition());   // hatch burst
       print("GemFactory: enhanced image attached for " + memoryId);
@@ -324,6 +363,29 @@ export class GemFactory {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Attach the router's motion + particle recipes to a gem (DESIGN.md: the LLM
+   * tags every memory with animRecipe + vfxRecipe). Pass null/null to fall back
+   * to the baseline idle. Safe to call before or after the visual is conjured.
+   */
+  setRecipes(memoryId: string, anim: AnimRecipe | null, vfx: VfxRecipe | null): void {
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      g.anim = anim;
+      g.vfx = vfx;
+      g.vfxAccum = 0;
+      // A recipe change can leave the last frame's offset/scale baked in.
+      const active = g.enhanced !== null && !isNull(g.enhanced) ? g.enhanced : g.visual;
+      if (!isNull(active)) {
+        active.getTransform().setLocalPosition(vec3.zero());
+        active.getTransform().setLocalScale(g.visualBase);
+      }
+      print("GemFactory: recipes for " + memoryId + " — anim=" + (anim === null ? "idle" : anim) +
+        " vfx=" + (vfx === null ? "none" : vfx));
+      return;
+    }
   }
 
   /** Re-tint the surface light pool (e.g. to match a conjured object). */
@@ -380,6 +442,12 @@ export class GemFactory {
     if (g.glow !== null && !isNull(g.glow)) g.glow.enabled = g.resolved;
     if (!g.resolved && g.glint === null) g.glint = this.buildGlint(g);
     if (g.glint !== null && !isNull(g.glint)) g.glint.enabled = !g.resolved;
+  }
+
+  private setVisualBase(memoryId: string, base: vec3): void {
+    for (const g of this.gems) {
+      if (g.memoryId === memoryId) { g.visualBase = base; return; }
+    }
   }
 
   /** Post-fit: re-sync an enhanced holder with the gem's resolve state (Explore). */
@@ -442,6 +510,137 @@ export class GemFactory {
   }
 
   /**
+   * Draw the journey: a dashed violet→teal ribbon threading the loci in route
+   * order (DESIGN.md "Journeys"). Rebuilt only when the route changes — capture,
+   * delete, reorder, load — never per frame. Fewer than two loci = no ribbon.
+   */
+  setRoute(points: vec3[]): void {
+    this.clearRoute();
+    if (points.length < 2) return;
+    const raw: [number, number, number][] = points.map((p) => [p.x, p.y, p.z] as [number, number, number]);
+    const mesh = buildPathDashMesh(raw, RIBBON_WIDTH, RIBBON_DASH, RIBBON_GAP, RGB_VIOLET, RGB_TEAL);
+    if (mesh === null) return;
+    // Hosted at the origin with identity rotation, so mesh-local == world.
+    const obj = global.scene.createSceneObject("JourneyRibbon");
+    obj.setParent(this.parent);
+    obj.getTransform().setWorldPosition(vec3.zero());
+    obj.getTransform().setWorldRotation(quat.quatIdentity());
+    const rmv = obj.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    rmv.mesh = mesh;
+    rmv.mainMaterial = this.burstMat;
+    this.ribbon = obj;
+    print("GemFactory: journey ribbon drawn — " + points.length + " loci");
+  }
+
+  clearRoute(): void {
+    if (this.ribbon !== null && !isNull(this.ribbon)) this.ribbon.destroy();
+    this.ribbon = null;
+  }
+
+  /**
+   * Mark the next locus on the route: a slow teal orbit ring that breathes.
+   * Content-free by construction, so Train can use it on a bare glow without
+   * leaking the answer. Pass null to clear.
+   */
+  setNextLocus(memoryId: string | null): void {
+    if (this.nextRing !== null) {
+      if (this.nextRing.memoryId === memoryId) return;   // unchanged
+      if (!isNull(this.nextRing.obj)) this.nextRing.obj.destroy();
+      this.nextRing = null;
+    }
+    if (memoryId === null) return;
+    for (const g of this.gems) {
+      if (g.memoryId !== memoryId) continue;
+      if (isNull(g.wrapper)) return;
+      if (this.nextRingMesh === null) {
+        this.nextRingMesh = buildDashedRingMesh(NEXT_RING_RADIUS, 0.5, 10, 0.55, RGB_TEAL);
+      }
+      const ring = global.scene.createSceneObject("NextLocusRing");
+      ring.setParent(g.wrapper);   // rides the bob with its gem
+      ring.getTransform().setLocalPosition(vec3.zero());
+      const rmv = ring.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+      rmv.mesh = this.nextRingMesh;
+      rmv.mainMaterial = this.burstMat;
+      this.nextRing = { memoryId: memoryId, obj: ring };
+      print("GemFactory: next locus → " + memoryId);
+      return;
+    }
+  }
+
+  /**
+   * Ambient particle recipe around a living gem (DESIGN.md vfxRecipe). Rate-
+   * based with a fractional accumulator, so the look is frame-rate independent;
+   * gated by distance and by the global particle cap so a 30-memory palace
+   * stays a palace and not a wind-chime shop.
+   */
+  private emitRecipeVfx(g: GemRecord, dt: number, camPos: vec3): void {
+    if (this.particles.length >= VFX_PARTICLE_CAP) return;
+    const center = g.wrapper.getTransform().getWorldPosition();
+    if (center.sub(camPos).length > VFX_RANGE_CM) return;
+
+    let rate: number;
+    switch (g.vfx) {
+      case "sparkle": rate = 1.6; break;
+      case "smoke":   rate = 0.9; break;
+      case "rain":    rate = 2.2; break;
+      case "burst":   rate = 1 / VFX_BURST_PERIOD_S; break;
+      default: return;
+    }
+    g.vfxAccum += dt * rate;
+    if (g.vfxAccum > 3) g.vfxAccum = 1;   // never bank a backlog after a stall
+    let budget = 2;                        // per-gem per-frame emission ceiling
+    while (g.vfxAccum >= 1 && budget > 0) {
+      g.vfxAccum -= 1;
+      budget--;
+      this.emitVfxUnit(g.vfx as VfxRecipe, center);
+    }
+  }
+
+  /** One emission "tick" of a recipe — burst is the only multi-particle one. */
+  private emitVfxUnit(vfx: VfxRecipe, center: vec3): void {
+    if (this.puffMeshA === null) this.puffMeshA = buildDiscMesh(1.3, RGB_LIGHT_VIOLET);
+    if (this.puffMeshB === null) this.puffMeshB = buildDiscMesh(1.1, RGB_TEAL);
+    if (vfx === "burst") {
+      // A quick radial pop — the "look at me" recipe for urgent memories.
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.random() * 0.4;
+        const speed = 22 + Math.random() * 14;
+        this.pushMote(center,
+          new vec3(Math.cos(a) * speed, 4 + Math.random() * 6, Math.sin(a) * speed),
+          0.4 + Math.random() * 0.25, 0.45 + Math.random() * 0.3);
+      }
+      return;
+    }
+    if (vfx === "sparkle") {
+      const jitter = new vec3((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 8);
+      this.pushMote(center.add(jitter), new vec3(0, 9 + Math.random() * 5, 0),
+        0.7 + Math.random() * 0.4, 0.3 + Math.random() * 0.25);
+      return;
+    }
+    if (vfx === "smoke") {
+      // Bigger, slower, lazier — reads as a smoulder rather than a twinkle.
+      const jitter = new vec3((Math.random() - 0.5) * 5, -2, (Math.random() - 0.5) * 5);
+      this.pushMote(center.add(jitter),
+        new vec3((Math.random() - 0.5) * 7, 4 + Math.random() * 4, (Math.random() - 0.5) * 7),
+        1.1 + Math.random() * 0.6, 0.8 + Math.random() * 0.5);
+      return;
+    }
+    // rain: drizzle falling through the memory from just above it.
+    const spawn = center.add(new vec3((Math.random() - 0.5) * 10, 14, (Math.random() - 0.5) * 10));
+    this.pushMote(spawn, new vec3(0, -34, 0), 0.8, 0.22 + Math.random() * 0.18);
+  }
+
+  private pushMote(pos: vec3, vel: vec3, life: number, size: number): void {
+    const obj = global.scene.createSceneObject("RecipeMote");
+    obj.setParent(this.parent);
+    obj.getTransform().setWorldPosition(pos);
+    const rmv = obj.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    rmv.mesh = Math.random() < 0.5 ? (this.puffMeshA as RenderMesh) : (this.puffMeshB as RenderMesh);
+    rmv.mainMaterial = this.burstMat;
+    this.particles.push({ obj: obj, vel: vel, age: 0, life: life, size: size });
+  }
+
+  /**
    * Slow orbit-ring focus highlight on the gazed gem (STYLE.md: everything
    * focused earns an orbit) + gentle rising motes while held. Pass null to clear.
    */
@@ -500,6 +699,8 @@ export class GemFactory {
     if (g.enhanced !== null && !isNull(g.enhanced)) g.enhanced.destroy();
     g.enhanced = null;
     g.enhancedKind = null;
+    g.visualBase = vec3.one();   // back to the gem visual's rest scale
+    if (!isNull(g.visual)) g.visual.getTransform().setLocalPosition(vec3.zero());
     for (let i = this.pendingFit.length - 1; i >= 0; i--) {
       if (this.pendingFit[i].memoryId === g.memoryId) this.pendingFit.splice(i, 1);
     }
@@ -596,6 +797,9 @@ export class GemFactory {
       if (g.glow !== null && !isNull(g.glow)) g.glow.destroy();
     }
     this.gems = [];
+    // Ring/ribbon lifetimes are tied to the route, not to any one gem.
+    this.clearRoute();
+    this.setNextLocus(null);
   }
 
   /** Current bob-less anchor position for a gem, or null. */
@@ -621,11 +825,13 @@ export class GemFactory {
       if (size > 0.01) {
         const k = f.target / size;
         f.holder.getTransform().setLocalScale(new vec3(k, k, k));
+        this.setVisualBase(f.memoryId, new vec3(k, k, k));   // scale recipes build on the fit
         print("GemFactory: fitted enhanced mesh (" + size.toFixed(1) + " cm native → ×" + k.toFixed(2) + ")");
         this.pendingFit.splice(i, 1);
         this.applyFitVisibility(f.memoryId);   // re-sync with Explore resolve state
       } else if (f.frames > 12) {
         f.holder.getTransform().setLocalScale(new vec3(10, 10, 10));   // skill fallback floor
+        this.setVisualBase(f.memoryId, new vec3(10, 10, 10));
         print("GemFactory: enhanced mesh unmeasurable — fallback scale 10");
         this.pendingFit.splice(i, 1);
         this.applyFitVisibility(f.memoryId);   // re-sync with Explore resolve state
@@ -639,6 +845,21 @@ export class GemFactory {
       cr.obj.getTransform().setLocalRotation(
         quat.angleAxis(this.elapsed * 3.2, vec3.up())
           .multiply(quat.angleAxis(-Math.PI / 2, vec3.right())));   // lay ring flat, spin about up
+    }
+
+    // Next-locus ring: lays flat, counter-rotates slowly, and breathes — the
+    // "you're headed here" beacon, readable from across the room.
+    if (this.nextRing !== null) {
+      if (isNull(this.nextRing.obj)) {
+        this.nextRing = null;
+      } else {
+        const nt = this.nextRing.obj.getTransform();
+        nt.setLocalRotation(
+          quat.angleAxis(-this.elapsed * 0.55, vec3.up())
+            .multiply(quat.angleAxis(-Math.PI / 2, vec3.right())));
+        const ns = 1 + 0.12 * Math.sin(this.elapsed * Math.PI * 2 * 0.5);
+        nt.setLocalScale(new vec3(ns, ns, ns));
+      }
     }
 
     // Gaze ring: slow contemplative orbit + a drizzle of rising motes.
@@ -675,25 +896,74 @@ export class GemFactory {
 
     for (const g of this.gems) {
       if (isNull(g.wrapper)) continue;
-      if (g.enhanced !== null && g.enhancedKind === "image" && !isNull(g.enhanced)) {
-        // Conjured images billboard toward the viewer (+Z at camera).
+      const t = this.elapsed + g.phase;
+      const isImage = g.enhanced !== null && g.enhancedKind === "image" && !isNull(g.enhanced);
+      const visual = g.enhanced !== null && !isNull(g.enhanced) ? g.enhanced : g.visual;
+
+      // ── Recipe → motion parameters. Baseline idle applies to EVERY gem
+      // (DESIGN: "at least idle bob + slow spin"); the recipe layers on top.
+      let bobAmp = IDLE_BOB_CM * g.scale;
+      let bobHz = IDLE_BOB_HZ;
+      let spinRate = (Math.PI * 2) / IDLE_SPIN_S;
+      let scaleMul = 1;
+      let orbitR = 0;
+      let shake = 0;
+      switch (g.anim) {
+        case "spin":  spinRate = (Math.PI * 2) / 3; break;
+        case "bob":   bobAmp *= 3.2; bobHz = 0.5; break;
+        case "pulse": scaleMul = 1 + 0.18 * Math.sin(t * Math.PI * 2 * 1.6); break;
+        case "orbit": orbitR = ORBIT_RADIUS_CM; break;
+        case "shake": shake = SHAKE_AMP_CM; break;
+        case "swell": scaleMul = 1 + 0.30 * Math.sin(t * Math.PI * 2 * 0.35); break;
+        default: break;   // null → baseline idle
+      }
+
+      if (isImage) {
+        // Conjured images billboard toward the viewer (+Z at camera) — spin and
+        // orbit would rotate the picture away from the reader, so they degrade
+        // to a livelier bob instead.
         const toCam = camPos.sub(g.wrapper.getTransform().getWorldPosition()).normalize();
         const upRef = Math.abs(toCam.dot(vec3.up())) > 0.98 ? vec3.forward() : vec3.up();
-        g.enhanced.getTransform().setWorldRotation(quat.lookAt(toCam, upRef));
+        (g.enhanced as SceneObject).getTransform().setWorldRotation(quat.lookAt(toCam, upRef));
+        if (orbitR > 0 || g.anim === "spin") { bobAmp = IDLE_BOB_CM * g.scale * 3.2; bobHz = 0.5; }
+        orbitR = 0;
       } else {
         // Spin on the active visual child (never the collider wrapper).
-        const spinTarget = g.enhanced !== null && !isNull(g.enhanced) ? g.enhanced : g.visual;
-        const spin = ((this.elapsed + g.phase) * (Math.PI * 2)) / 24;
-        spinTarget.getTransform().setLocalRotation(quat.angleAxis(spin, vec3.up()));
+        visual.getTransform().setLocalRotation(quat.angleAxis(t * spinRate, vec3.up()));
       }
-      // Bob = translation on the wrapper so the collider follows.
-      const bob = Math.sin((this.elapsed * Math.PI * 2) / 4 + g.phase) * 2.2 * g.scale;
-      g.wrapper.getTransform().setWorldPosition(new vec3(g.base.x, g.base.y + bob, g.base.z));
+
+      // Orbit / scale ride the visual child; bob + shake ride the wrapper so
+      // the collider (and every ring/glint parented to it) follows along.
+      if (!isImage) {
+        visual.getTransform().setLocalPosition(orbitR > 0
+          ? new vec3(Math.cos(t * Math.PI * 2 * 0.5) * orbitR, 0, Math.sin(t * Math.PI * 2 * 0.5) * orbitR)
+          : vec3.zero());
+      }
+      if (scaleMul !== 1) {
+        visual.getTransform().setLocalScale(new vec3(
+          g.visualBase.x * scaleMul, g.visualBase.y * scaleMul, g.visualBase.z * scaleMul));
+      }
+
+      const bob = Math.sin(t * Math.PI * 2 * bobHz) * bobAmp;
+      let sx = 0, sz = 0, sy = 0;
+      if (shake > 0) {
+        // Three incommensurable frequencies = jitter that never visibly loops.
+        sx = Math.sin(t * 37.1) * shake;
+        sy = Math.sin(t * 43.7) * shake * 0.6;
+        sz = Math.sin(t * 31.3) * shake;
+      }
+      g.wrapper.getTransform().setWorldPosition(
+        new vec3(g.base.x + sx, g.base.y + bob + sy, g.base.z + sz));
       // The light pool breathes counter to the bob: gem closer → pool fuller.
       // (Arriving gems overwrite this later in update() — last write wins.)
       if (g.glow !== null && !isNull(g.glow)) {
-        const gs = 1 - (bob / (2.2 * g.scale)) * 0.1;
+        const gs = 1 - (bob / (IDLE_BOB_CM * g.scale)) * 0.1;
         g.glow.getTransform().setLocalScale(new vec3(gs, gs, gs));
+      }
+
+      // Ambient VFX — resolved gems only, distance-gated, under a global cap.
+      if (g.resolved && g.vfx !== null && g.vfx !== "none") {
+        this.emitRecipeVfx(g, dt, camPos);
       }
       // Explore glints: billboard toward the viewer + slow shimmer pulse.
       if (!g.resolved && g.glint !== null && !isNull(g.glint)) {
