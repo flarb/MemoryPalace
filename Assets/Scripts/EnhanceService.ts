@@ -19,14 +19,19 @@ import { OpenAITypes } from "RemoteServiceGateway.lspkg/HostedExternal/OpenAITyp
 
 export type EnhanceKind = "mesh" | "image";
 
-/** Literal transcript → styled generation prompt (brand palette baked in). */
+/** Literal transcript → styled generation prompt (brand palette baked in).
+ *  Additive-display rule in both templates: dark pixels VANISH on Specs, so
+ *  subjects must be bright/luminous. (A dark background on the image is fine
+ *  — it disappears, leaving the subject floating like a cutout.) */
 export function buildEnhancePrompt(kind: EnhanceKind, transcript: string): string {
   if (kind === "mesh") {
     return "A small charming low-poly magical object representing: " + transcript +
-      ". Fantasy crystal aesthetic, clean silhouette, single centered object.";
+      ". Fantasy crystal aesthetic, clean silhouette, single centered object, " +
+      "bright glowing pastel colors, luminous surfaces, no black or dark materials.";
   }
   return "A dreamy magical illustration representing: " + transcript +
-    ". Soft violet and teal glow, single centered subject, dark indigo background.";
+    ". Soft violet and teal glow, single brightly luminous centered subject in " +
+    "vivid saturated colors, dark indigo background.";
 }
 
 export class EnhanceService {

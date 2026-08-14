@@ -697,7 +697,7 @@ export class GemFactory {
       const ac = ring.createComponent("Component.AudioComponent") as AudioComponent;
       ac.audioTrack = FORGE_SFX;
       ac.playbackMode = Audio.PlaybackMode.LowPower;   // ambient loop (specs-audio)
-      ac.volume = 0.22;
+      ac.volume = 0.07;   // was 0.22 — user: too loud for a 90 s wait; 1/3
       ac.play(-1);
       this.conjureRings.push({ memoryId: memoryId, obj: ring });
       return;

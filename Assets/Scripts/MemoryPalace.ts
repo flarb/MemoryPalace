@@ -817,6 +817,7 @@ export class MemoryPalace extends BaseScriptComponent {
     }
     if (rec === null) return;
     this.selectedMemoryId = memoryId;
+    this.applyConjureGate();   // card open = swirl yields (SESSION only)
 
     // Card blooms above the gem, pulled toward the viewer, facing the user.
     const base = fromStoredVec3(rec.position);
@@ -894,6 +895,7 @@ export class MemoryPalace extends BaseScriptComponent {
   private openConjureChip(rec: MemoryRecord): void {
     this.selectedMemoryId = rec.id;
     this.freshCaptureId = rec.id;   // X = cancel while THIS card stays open
+    this.applyConjureGate();        // card open = swirl yields
     const pose = this.memCardPose(fromStoredVec3(rec.position));
     this.uiHud.showMemoryCard(rec.transcript, pose.pos, pose.rot,
       rec.enhance !== undefined, false, "enhance");
@@ -993,7 +995,11 @@ export class MemoryPalace extends BaseScriptComponent {
 
   private applyConjureGate(): void {
     if (this.state !== "SESSION") return;   // other states own chipOnly themselves
-    const busy = Object.keys(this.conjuringIds).length > 0;
+    // The swirl yields while you're mid-creation: a memory card open (the
+    // post-capture chip included — user report: both interfaces visible at
+    // once) OR a conjure still forging. Done stays available throughout.
+    const busy = Object.keys(this.conjuringIds).length > 0 ||
+      this.selectedMemoryId !== null;
     this.sigil.setChipOnly(busy);   // swirl + "New Memory" label hide; Done stays
   }
 
@@ -1140,6 +1146,7 @@ export class MemoryPalace extends BaseScriptComponent {
     // Any close ends the "fresh capture" window — reopening the same gem
     // later gets ordinary card semantics (X = close, not cancel).
     this.freshCaptureId = null;
+    this.applyConjureGate();   // swirl returns unless a conjure still forges
   }
 
   // ── Gestures & helpers ─────────────────────────────────────────────────────

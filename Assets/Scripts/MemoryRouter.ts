@@ -63,7 +63,10 @@ const SYSTEM_PROMPT =
   "  prompt: a BIZARRE, VIVID, exaggerated image of the memory — the weirder the " +
   "more memorable. Concrete and absurd beats literal and tasteful. One centered " +
   "subject. Example: \"buy milk\" -> \"a cartoon cow doing a handstand spraying a " +
-  "fountain of milk\". Keep under 30 words.\n" +
+  "fountain of milk\". Keep under 30 words. CRITICAL: the result renders on an " +
+  "ADDITIVE AR display where dark pixels turn invisible — always describe the " +
+  "subject in bright, luminous, saturated colors (glowing pastels, vivid hues, " +
+  "white highlights); never black, dark, or shadowed materials.\n" +
   "  animRecipe: one of spin, bob, pulse, orbit, swell. Motion carries the " +
   "encoding — pick the one that dramatizes THIS memory. Abstract or urgent " +
   "memories deserve the bigger motions (pulse, swell).\n" +
