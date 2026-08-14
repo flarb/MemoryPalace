@@ -85,7 +85,7 @@ const GAZE_DWELL_S = 0.8;                       // hold before the label blooms
 const GAZE_GRACE_S = 1.2;                       // label lingers after gaze leaves
 const GAZE_LABEL_LIFT = 11;                     // cm above the gem
 const GAZE_DEBUG_DWELL_S = 2.5;                 // extra hover past reveal → prompt debug box (edit mode)
-const GAZE_DEBUG_DROP = 8;                      // cm below the gaze label
+const GAZE_DEBUG_RAISE = 7;                     // cm ABOVE the gaze label — below covered the object (user)
 const FLASH_GEM_LIFT = 26;                      // cm above a gem — status pills must clear the gaze label at +11 (plate + bob)
 
 type WizardState = "MODAL" | "SESSION" | "AIMING" | "LISTENING" | "EXPLORE" | "TRAIN";
@@ -1217,7 +1217,7 @@ export class MemoryPalace extends BaseScriptComponent {
         const p = this.gems.basePosition(bestId);
         if (p !== null) {
           this.uiHud.setGazeLabelPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT, p.z));
-          this.uiHud.setGazeDebugPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT - GAZE_DEBUG_DROP, p.z));
+          this.uiHud.setGazeDebugPosition(new vec3(p.x, p.y + GAZE_LABEL_LIFT + GAZE_DEBUG_RAISE, p.z));
         }
         // Debug tier (edit sessions only): keep hovering past the reveal and
         // the routed generation prompt appears — hover off and it's gone.
