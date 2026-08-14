@@ -1,5 +1,49 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Fri Aug 14 (late afternoon) — Reshoot: zoom crop + the three-locus walk
+
+**Prompt:** "it's hared to read the text because it's so small, so we should
+probalby crop the capture to be just the augmented area. Effectively zooming
+in. You should show trainign and exploring involving the user moving from
+memory to memory."
+
+**Both notes applied; five new clips (04–08) supersede the first session.**
+Crop tightened to the augmented zone (780×1420 of the preview — card text and
+grade buttons now read at full size). And the palace got real geography:
+three memories at three spots — the transcript constant swapped between takes
+("dentist Tuesday at three" → "call mom Sunday" → back to "buy milk for
+Thursday", the last via `git checkout`, ending the shoot with a clean tree).
+Explore and Train are now genuine walks: whisper at 48 cm → seashell → along
+the ribbon to the trampoline cow → the distant toothbrush; Train's ping and
+breathing ring lead locus→locus→locus, three reveals, three Remembered,
+mastery ticking 0→1.
+
+**The router had a day:** "dentist Tuesday at three" → *a suited toothbrush
+riding a tooth-shaped rollercoaster with clock gears*; "call mom Sunday"
+→ image route (the noun-verb split firing exactly as designed) → *a golden
+seashell, pastel clouds, mom with a sundial*; "buy milk for Thursday" → *a
+crowned cow juggling milk bottles on a calendar trampoline* — and Snap3D
+actually BUILT the trampoline. Red. With legs.
+
+**Store-wipe incident → protocol:** between sessions 1 and 2, a recompile
+followed by a log-refresh (= two stacked resets) wiped the editor store —
+Tuesday's "triple-reset" lesson refined to a rule: between takes, recompile
+ONLY and verify by log tail; never chase it with a refresh. Under that
+protocol the palace survived two more recompiles on camera ("1 saved
+palace(s)" at each boot; the picker row growing "1 memory" → "2 memories"
+is the persistence demo, incidentally filmed). Title-based ffmpeg window
+capture also died mid-shoot (the unsaved-changes asterisk renamed the
+window) — capture switched to absolute desktop-region grab, immune to
+titles.
+
+**Honesty ledger:** still video-only (no loopback device). The gimbal poked
+us once (a yaw rotate landed pitch-90 staring at the floor; deterministic
+lookAt fixed it — logged as the better tool). One walk overshot INTO the
+cow (kept in the shot log as "comedic, keep or trim"). A SIK-internal
+cursor null fired once at quiz completion (package code, invisible on
+film). The take-04 card double-tap re-opened a card for ~15 s — flagged
+for the cut.
+
 ## Fri Aug 14 (afternoon) — The agent films its own demo footage
 
 **Prompt:** "let's record a video now — because I want to submit now and then
