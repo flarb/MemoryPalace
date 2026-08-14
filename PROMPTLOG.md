@@ -1,5 +1,108 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Thu Aug 13 — Thursday's three: router, recipes, journeys
+
+**Prompt:** "ok let's resume, what do we have left to do?" → a what's-left
+review against DESIGN.md → "ok let's do all of thursday's stuff--if we
+finish, we can move on to friday's stuff but let's do 1, 2, and 3 on
+thursday's scope" (1 = imagery router, 2 = journeys, 3 = anim/VFX recipes).
+
+**Two decisions taken to the user before writing code** (both would have
+changed the build, so neither was guessed):
+- *Router trigger* → **auto-label + one-tap conjure**. Every capture routes
+  for a label + recipes; generation still waits for a "Conjure imagery?"
+  chip. (Alternatives offered: fully automatic — burns a Snap3D generation
+  per capture and can't be declined; or Enhance-tap-only — no auto-labels.)
+- *Journey scope* → **route polish on the implicit journey** (persisted
+  order, ribbon, next-locus glow, reordering) rather than full named
+  multi-routes with a membership UI, which is most of a day on its own and
+  would have eaten the other two.
+
+**Increment 1 — the mnemonic router (`MemoryRouter.ts`).** One RSG
+chat-completions call (`gpt-4.1-nano`, temp 0.9 — mnemonics want surprise,
+not the median answer) turns the transcript into `{label, kind, prompt,
+animRecipe, vfxRecipe}`. The system prompt encodes DESIGN's noun→mesh /
+verb→image split and demands bizarre-vivid imagery. Tolerant JSON extraction
+(models fence and preamble), every enum clamped to its allowed set, and a
+local fallback on any failure — offline, expired token, garbage reply — that
+is *still animated*, because a static mnemonic is a worse mnemonic. The
+router **offers** imagery (`routeKind`/`routePrompt`); `enhance` remains the
+accepted request that regenerates on load. That split is why a decline costs
+nothing and a reload doesn't silently spend Snap3D credits.
+
+DESIGN's third kind, **bitmoji**, stays Friday scope — the package isn't
+installed. Until then people/actions route to `image`. Logged here rather
+than quietly dropped: the enum change is one line when the package lands.
+
+**Increment 2 — motion + VFX recipes (`GemFactory`).** Six transform recipes
+(spin, bob, pulse, orbit, shake, swell) layered *on top of* the baseline idle
+every gem keeps, per DESIGN's "at least idle bob + slow spin". Four particle
+recipes (sparkle, smoke, burst, rain) reuse the existing additive puff family
+rather than adding a second particle system — DESIGN's VFX perf risk note,
+honored. Emission is rate-based with a fractional accumulator (frame-rate
+independent) and triple-gated: resolved gems only, within 5 m, under a global
+140-particle ceiling, plus a per-gem per-frame budget.
+
+*The trap worth logging:* scale recipes and the Snap3D auto-fit both want to
+own `localScale`. Writing scale outright would have silently undone the fit —
+and Snap3D natives are tiny (measured **0.8 cm → ×16.83** this session), so
+"pulse" would have shrunk a conjured object back to a speck. Fixed by storing
+a per-gem `visualBase` (one for a gem, the fitted scale for a mesh, the aspect
+box for an image) that recipes *multiply*. Conjured images keep billboarding,
+so spin/orbit degrade to a livelier bob instead of rotating the picture away
+from the reader.
+
+**Increment 3 — journeys.** `order` persists on the memory; `routeOrder` /
+`normalizeRoute` / `moveInRoute` live in PalaceStore, and records without an
+order keep their capture position — old saves walk exactly as before. The
+ribbon (`buildPathDashMesh`) is a dashed polyline of **crossed quads**, so it
+reads from any angle without billboarding, running violet→teal so route
+direction is legible at a glance; it rebuilds only on route change, never per
+frame. The next locus wears a slow teal orbit ring that breathes — content-free
+by construction, so Train can ring a bare glow without leaking the answer. The
+memory card gains a journey row ("Locus 2 of 2" between two arrows, edit
+sessions only), and Train now consumes `routeOrder()` instead of capture order.
+
+**Verification (real preview, real network, driven via SIK puppet-hand
+pinches — not asserted from the code):**
+- RSG tokens regenerated first (~1 h TTL), so this exercised the live API.
+- Capture → `MemoryRouter: "buy milk for Thursday" → [Milk for Thursday]
+  kind=mesh anim=pulse vfx=sparkle prompt="A giant carton of milk with a
+  clock face, Thursday stamped on it, being hoisted by a muscular octopus
+  with a milk mustache."` — DESIGN's own example, transformed.
+- Recipes applied (`GemFactory: recipes … anim=pulse vfx=sparkle`), and the
+  **pulse proven live**: the gem visual read `localScale` 1.179 then 0.920
+  across two runtime queries — inside the designed ±18 % band, which a static
+  screenshot could never have shown.
+- One-tap Conjure → `conjuring mesh` → `refined mesh swapped in` → `fitted
+  enhanced mesh (0.8 cm native → ×16.83)`. The chip really does produce a 3D
+  object from the router's own prompt, no typing.
+- Gaze label flipped from the raw transcript to **"Milk for Thursday"** once
+  routing landed.
+- Second capture → `journey ribbon drawn — 2 loci`; an orthographic runtime
+  capture confirms the dashed violet→teal gradient between the two gems.
+- Reorder ◀ → `route move … → position 1`, saved; then Train opened on that
+  memory (`next locus → mmssixemb_3huu`), proving the route order — not
+  capture order — drives the walk.
+- Recipes and order both survive the save/load round trip (restored from the
+  store on the Train entry).
+
+**Incidents:**
+- `ExecuteEditorCode` token generation failed twice before landing: top-level
+  `import` is rejected (use `await import(...)`), `resp.body` is a Buffer (not
+  a string), and the Editor API's SceneObject exposes `.children`, not
+  `getChildrenCount()`. The credentials component is also findable only by
+  SceneObject *name* — its `type` is the bare `"ScriptComponent"`.
+- Preview puppet-hand targeting went unreliable after a mid-session recompile:
+  pinches by `uniqueId` timed out on the head-following start modal (the hand
+  landed on the neighbouring row). Pinching by **world position** worked. The
+  modal moving under a tool that resolves a position once is the likely cause;
+  worth remembering before blaming a button.
+- Train's teal next-locus ring is proven by log + by the ring renderer working
+  elsewhere in the same capture, not by a screenshot of Train itself — the
+  puppet-hand issue above ate the attempt. One manual Train run is the visual
+  check.
+
 ## Wed Aug 12, ~9:30 PM — The speaker breathes while it thinks
 
 **Prompt:** "can we have some kind of progress animation when we hit
