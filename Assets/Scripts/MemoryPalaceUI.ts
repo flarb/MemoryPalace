@@ -233,6 +233,8 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   private memCardFlex: FlexLayout | null = null
   private memCardCloseX: SceneObject | null = null
   private memCardMode: "main" | "enhance" | "readonly" | "prompt" | "grade" = "main"
+  private memCardPhotoFrame: BackPlate | null = null
+  private memCardBackRow: SceneObject | null = null
   private memCardRemoveRow: SceneObject | null = null
   private memCardPromptRow: SceneObject | null = null
   private memCardGradeRow: SceneObject | null = null
@@ -565,7 +567,18 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     if (this.memCardCloseX !== null) this.memCardCloseX.enabled = false
     if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = false
     if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = false
+    if (this.memCardBackRow !== null) this.memCardBackRow.enabled = false
     if (this.memCardPhotoRow !== null) this.memCardPhotoRow.enabled = false
+    // Photo frame → white. BackPlate has no light style; its RoundedRectangle
+    // is private and only exists after OnStart, so recolor here (post-init),
+    // in the brand's lavender-white rather than clinical #fff.
+    if (this.memCardPhotoFrame !== null) {
+      const rr = (this.memCardPhotoFrame as any).roundedRectangle
+      if (rr) {
+        rr.gradient = false
+        rr.backgroundColor = COL_TEXT   // #ede9ff
+      }
+    }
     this.applyVisibility()
   }
 
@@ -986,8 +999,11 @@ export class MemoryPalaceUI extends BaseScriptComponent {
     // plate isn't multiplied by the photo's scale.
     this.memCardPhotoRow = this.flexChild(col, {w: PHOTO_FRAME_CM, h: PHOTO_FRAME_CM}, (c) => {
       const frame = c.createComponent(BackPlate.getTypeName()) as BackPlate
-      frame.style = "dark"
+      // "simple" = flat color; recolored to white post-init (BackPlate ships
+      // no light style, and its roundedRectangle exists only after OnStart).
+      frame.style = "simple"
       frame.size = new vec2(PHOTO_FRAME_CM, PHOTO_FRAME_CM)   // BEFORE init
+      this.memCardPhotoFrame = frame
       const photo = this.obj(c, "Photo", new vec3(0, 0, PHOTO_Z_LIFT))
       const img = photo.createComponent("Component.Image") as Image
       const mat = imageMaterial.clone()
@@ -1009,15 +1025,14 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       })
     })
 
-    // Action row: Enhance (toggles the conjure block) / Delete (soft rose).
-    // Dismissal lives on the corner X, not in this row — and Delete stays on
-    // screen while the conjure block is open, so it's always one tap away.
+    // Action row: Enhance (opens the conjure panel) / Delete (soft rose).
+    // Dismissal lives on the corner X, not in this row. Main and enhance are
+    // two distinct panels (user call: everything at once was redundant).
     this.memCardActionRow = this.flexChild(col, {w: 21, h: 3}, (c) => {
       const row = this.flexRow(c, 21, 3, {
         justify: FlexJustify.Center, align: FlexAlign.Center, gap: 0.8,
       })
-      this.rowButton(row, "Enhance", 7.4, COL_TEAL,
-        () => this.setMemCardMode(this.memCardMode === "enhance" ? "main" : "enhance"))
+      this.rowButton(row, "Enhance", 7.4, COL_TEAL, () => this.setMemCardMode("enhance"))
       this.rowButton(row, "Delete", 7, COL_ROSE, () => this._onCardDelete.invoke())
     })
 
@@ -1080,6 +1095,15 @@ export class MemoryPalaceUI extends BaseScriptComponent {
       this.rowButton(row, "Remove enhancement", 15, COL_ROSE, () => this._onCardEnhanceRemove.invoke())
     })
 
+    // Back to the main panel. Its own full row at the bottom of the conjure
+    // panel — the old in-row "Back" read as a third imagery kind.
+    this.memCardBackRow = this.flexChild(col, {w: 21, h: 2.8}, (c) => {
+      const row = this.flexRow(c, 21, 2.8, {
+        justify: FlexJustify.Center, align: FlexAlign.Center,
+      })
+      this.rowButton(row, "Back", 8, COL_MUTED, () => this.setMemCardMode("main"))
+    })
+
     // (The read-only Explore row is gone: its only control was Close, and the
     // corner X now does that in every mode.)
 
@@ -1105,23 +1129,22 @@ export class MemoryPalaceUI extends BaseScriptComponent {
   /** Swap the memory card between its action rows (edit / conjure / read-only / train). */
   private setMemCardMode(mode: "main" | "enhance" | "readonly" | "prompt" | "grade"): void {
     this.memCardMode = mode
-    // "enhance" is ADDITIVE, not a replacement: the conjure block opens
-    // beneath the ordinary actions so Delete never goes out of reach —
-    // it used to vanish the moment the post-capture chip auto-opened.
-    const editing = mode === "main" || mode === "enhance"
-    if (this.memCardActionRow !== null) this.memCardActionRow.enabled = editing
-    if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = editing
+    // Two clean panels (user spec): MAIN = Enhance / Delete / route;
+    // ENHANCE = the conjure options + Back, nothing else duplicated.
+    if (this.memCardActionRow !== null) this.memCardActionRow.enabled = mode === "main"
+    if (this.memCardRouteRow !== null) this.memCardRouteRow.enabled = mode === "main"
     if (this.memCardConjureRow !== null) this.memCardConjureRow.enabled = mode === "enhance"
     if (this.memCardEnhanceRow !== null) this.memCardEnhanceRow.enabled = mode === "enhance"
     if (this.memCardRemoveRow !== null) {
       this.memCardRemoveRow.enabled = mode === "enhance" && this.cardHasEnhance
     }
+    if (this.memCardBackRow !== null) this.memCardBackRow.enabled = mode === "enhance"
     if (this.memCardPromptRow !== null) this.memCardPromptRow.enabled = mode === "prompt"
     if (this.memCardGradeRow !== null) this.memCardGradeRow.enabled = mode === "grade"
     // Dismissal is available while browsing, but not mid-quiz — closing the
     // card during a Train prompt would strand the run with no way back.
     if (this.memCardCloseX !== null && this.initDone) {
-      this.memCardCloseX.enabled = editing || mode === "readonly"
+      this.memCardCloseX.enabled = mode === "main" || mode === "enhance" || mode === "readonly"
     }
     // Rescan so the hidden rows give up their slots — `refreshChildren` skips
     // disabled children, which collapses the card down onto what's visible.
