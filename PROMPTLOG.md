@@ -1,5 +1,19 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Fri Aug 14 (night) — Submission copy in three sizes
+
+**Prompt:** "write me a project description for the CLAD contest submission form"
+
+**Increment: `SUBMISSION.md`** — paste-ready copy at three lengths (tagline /
+~90-word short / ~290-word full), so whatever field the form offers, one fits.
+Assembled from the README's locked language plus the shoot-day log entries, so
+the description cites what actually happened — the crowned cow juggling milk
+bottles on the calendar trampoline is the filmed router output, not marketing
+fiction. Theme addressed head-on: the method of loci as the oldest
+organizational technology, and an organizer whose goal is to make itself
+unnecessary. Terminology rule honored (SPECS, linked; the legacy device name
+appears nowhere). The CLAD paragraph points judges straight at this file.
+
 ## Fri Aug 14 (evening) — "Why don't you move smoothly?" — real input unlocks real walks
 
 **Prompt:** "how come you don't smoothly move around the room and instead
