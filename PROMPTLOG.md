@@ -28,6 +28,49 @@ organizational technology, and an organizer whose goal is to make itself
 unnecessary. Terminology rule honored (SPECS, linked; the legacy device name
 appears nowhere). The CLAD paragraph points judges straight at this file.
 
+## Fri Aug 14 (evening) — The edit: HyperFrames interstitials + the assembled demo
+
+**Prompt:** "ok so can hyou edit this together cropped to the augmented frame
+(is that 3:4 aspect ratio?) in a 1080p video using hyperframe skill to make
+interstitials..." — with the full nine-beat structure specified: intro card →
+CREATE card → creation footage → CONJURE card (enhancement options) → hatch
+footage → EXPLORE card → explore walk → TRAIN card → train route → end card.
+
+**Delivered: `DemoFootage/MemoryPalace-demo-v1.mp4` — 4:03, 1920×1080, with
+music.** (Premise correction: the augmented crop is ~9:16 portrait, not 3:4 —
+a true 3:4 would chop the gaze labels; the master is landscape 1080p with the
+footage as a full-height centered pillar on the brand background.)
+
+- **Six interstitial cards authored in HyperFrames** (the user named the
+  skill): the Keystone arch draws itself stroke-by-stroke into the gem +
+  wordmark on the intro; CREATE/CONJURE/EXPLORE/TRAIN section cards in the
+  STYLE.md system (tracked-light display caps, rule-line eyebrows, orbit-ring
+  and ribbon accents, drifting motes); CONJURE carries the two option chips
+  (3D object · Snap3D / Staged image · Imagen); the end card closes on the
+  gradient tagline. `hyperframes check` passed 0/0; renders inspected.
+- **Music bed generated with the lens's own synthesis engine** (/build-music):
+  64 s dreamy ambient in F major — pad + soft piano + crystal-bell arpeggio,
+  no percussion, seed 528 (the solfeggio wink) — looped under the full cut,
+  faded in/out. Silent submission footage reads as broken; now it doesn't.
+- **16 footage pieces** trimmed from contact-sheet analysis (session-1 create
+  flow re-cropped to the zoom region; the toothbrush hatch; the smooth
+  explore shots; the three-locus train route), pillar-composited, concatenated
+  in the user's exact order.
+
+**The ffmpeg incident, in full (CLAD honesty):** the piece-cutter ran three
+times. Run 1 "was slow" — actually every piece encoded FOREVER: a looping
+background PNG feeds the overlay filter, whose default keeps producing frames
+after the footage input ends, and muxer-level `-shortest` never fires because
+the merged stream never ends. Run 2 "fixed" the wrong thing (input timestamp
+semantics) and inherited the same infinite overlay. Killing run 2's task also
+taught a lesson: the harness kill took the bash parent but left the xargs
+dispatcher alive, which quietly SPAWNED FOUR MORE infinite encodes the moment
+its dead workers were cleared — a zombie assembly line. The real fix was one
+filter flag (`overlay=…:shortest=1`) plus killing the dispatcher, not the
+workers. Correctly bounded, each piece encoded in ~1 second — the "slow
+encoding" had been the bug the whole time. Verified: all 16 durations exact,
+master 243.3 s, h264+aac, QA sheet inspected across all nine beats.
+
 ## Fri Aug 14 (evening) — "Why don't you move smoothly?" — real input unlocks real walks
 
 **Prompt:** "how come you don't smoothly move around the room and instead
