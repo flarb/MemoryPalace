@@ -71,6 +71,13 @@ workers. Correctly bounded, each piece encoded in ~1 second — the "slow
 encoding" had been the bug the whole time. Verified: all 16 durations exact,
 master 243.3 s, h264+aac, QA sheet inspected across all nine beats.
 
+**v2 (same evening), on user notes:** the intro Keystone was decapitated —
+the SVG viewBox I lifted from the logo cropped the arch apex (arc peaks at
+y=110; my viewBox began at 190); same latent bug on the end card. Both
+re-boxed and re-rendered whole. And the cut tightened hard: action-only
+trims (forge wait to a 2 s beat, walks to motion, loading gone), section
+cards 4.5 s. **v1 4:03 → v2 2:10.**
+
 ## Fri Aug 14 (evening) — "Why don't you move smoothly?" — real input unlocks real walks
 
 **Prompt:** "how come you don't smoothly move around the room and instead
