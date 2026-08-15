@@ -67,12 +67,31 @@ Remote Service Gateway → **GPT-4.1-nano** (mnemonic router) · **Snap3D** (tex
    mouse interactor drives every pinch. On SPECS, the sigil rides the back of your
    left hand.
 
+## The honesty ledger
+
+This palace was built and verified **entirely in Lens Studio preview** — no SPECS
+hardware was in the room. Every feature above has editor receipts (synthetic-hand
+clicks, injected gestures, log evidence — see the prompt log); these are the device
+realities we know are still waiting:
+
+- **Anchors are raw poses.** Palaces persist, but loci are stored in world
+  coordinates relative to session start — re-donning in your room won't relocalize
+  them yet. Spatial Anchors are the known next step.
+- **Permissions & parallax.** The on-device camera-permission flow, and the
+  render-camera-vs-RGB-camera parallax in framed snapshots, are reasoned about,
+  not measured.
+- **Audio.** TTS whispers arrive at 24 kHz; the device spatial-audio path may
+  resample them differently than preview playback.
+- **The sigil.** In preview it parks in view; its back-of-left-hand placement is
+  untuned on hardware.
+
 ## CLAD
 
 This is a **CLAD Summer Hackathon** entry (week 1: *Organize*), built agentically —
 the full prompt history, verification evidence, dead ends, and 2 AM bug hunts live in
 [`PROMPTLOG.md`](PROMPTLOG.md). The design doc is [`DESIGN.md`](DESIGN.md); the visual
-doctrine is [`Branding/STYLE.md`](Branding/STYLE.md).
+doctrine is [`Branding/STYLE.md`](Branding/STYLE.md); the submission copy is
+[`SUBMISSION.md`](SUBMISSION.md).
 
 <p align="center">
   <sub>FLARB LLC · built with Claude Code + the Lens Studio MCP</sub>

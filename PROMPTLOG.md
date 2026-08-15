@@ -1,5 +1,19 @@
 # CLAD Prompt Log — MemoryPalace
 
+## Fri Aug 14 (night) — The honesty ledger, and the doors open
+
+**Prompt:** "update the readme, flip to public"
+
+**Increment:** README gains **The honesty ledger** — the long-planned
+pre-submission section stating plainly that the palace was built and verified
+entirely in preview, with the four known device realities (raw-pose anchors /
+permission flow + snapshot parallax / 24 kHz TTS vs device spatial audio /
+sigil hand-placement) as named caveats, not buried apologies. CLAD section now
+links `SUBMISSION.md`. Before opening the doors: a secret scan over tracked
+files (JWT-shaped strings, `sk-` keys, token literals) came back clean — the
+hourly RSG tokens never touched the tree. Then `gh repo edit --visibility
+public`: **the repo is public**, as the submission form requires.
+
 ## Fri Aug 14 (night) — Submission copy in three sizes
 
 **Prompt:** "write me a project description for the CLAD contest submission form"
